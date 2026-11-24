@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="103KNN/103KNN.csproj" />
+  <Project Path="103KNN.Neuromorphic/103KNN.Neuromorphic.csproj" />
+</Solution>
