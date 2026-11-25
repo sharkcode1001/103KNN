@@ -3,35 +3,139 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:_103KNN"
+        xmlns:studio="clr-namespace:_103KNN.Studio"
         mc:Ignorable="d"
-        Title="103KNN - Plataforma Cognitiva Neuromórfica (SNN + Spike-LLM + TTFS + STDP)"
-        Height="820" Width="1140"
-        Background="#141622"
+        Title="103KNN Neural Studio"
+        Height="890" Width="1300"
+        MinHeight="720" MinWidth="1080"
+        Background="{DynamicResource BgWindow}"
         WindowStartupLocation="CenterScreen">
 
     <Window.Resources>
+        <!-- Paleta Dinámica (Claro por defecto) -->
+        <SolidColorBrush x:Key="BgWindow" Color="#F1F5F9"/>
+        <SolidColorBrush x:Key="BgCard" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="BgElevated" Color="#F8FAFC"/>
+        <SolidColorBrush x:Key="BgControl" Color="#E2E8F0"/>
+        <SolidColorBrush x:Key="BgInput" Color="#F8FAFC"/>
+        <SolidColorBrush x:Key="BorderSubtle" Color="#CBD5E1"/>
+        <SolidColorBrush x:Key="BorderControl" Color="#94A3B8"/>
+        <SolidColorBrush x:Key="TextPrimary" Color="#0F172A"/>
+        <SolidColorBrush x:Key="TextSecondary" Color="#475569"/>
+        <SolidColorBrush x:Key="TextMuted" Color="#64748B"/>
+        <SolidColorBrush x:Key="AccentPrimary" Color="#0284C7"/>
+        <SolidColorBrush x:Key="AccentSuccess" Color="#059669"/>
+
         <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#E0E0E0"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
             <Setter Property="FontFamily" Value="Segoe UI"/>
         </Style>
+
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
         <Style TargetType="Button">
-            <Setter Property="Background" Value="#252A40"/>
-            <Setter Property="Foreground" Value="#F6B17A"/>
+            <Setter Property="Background" Value="{DynamicResource BgControl}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="12.5"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="BorderBrush" Value="#3D4566"/>
-            <Setter Property="Padding" Value="12,7"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderControl}"/>
+            <Setter Property="Padding" Value="12,8"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}"
+                        <Border x:Name="BtnBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="BtnBorder" Property="Opacity" Value="0.88"/>
+                                <Setter TargetName="BtnBorder" Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="BtnBorder" Property="Opacity" Value="0.72"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="BtnBorder" Property="Opacity" Value="0.40"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="{DynamicResource BgInput}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource AccentPrimary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtle}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,7"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="TxtBorder"
+                                Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="6">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="0"/>
                         </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter TargetName="TxtBorder" Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="ComboBox">
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="Padding" Value="10,7"/>
+        </Style>
+
+        <Style x:Key="NavTabStyle" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="GroupName" Value="MainNav"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="TabBorder"
+                                Background="{DynamicResource BgCard}"
+                                BorderBrush="{DynamicResource BorderSubtle}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Margin="0,0,8,0"
+                                Padding="16,8">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource BgControl}"/>
+                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource BorderControl}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -42,101 +146,450 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Header -->
-        <StackPanel Grid.Row="0" Margin="0,0,0,12">
-            <TextBlock Text="103KNN Cognitive Neuromorphic Platform" FontSize="25" FontWeight="Bold" Foreground="#F6B17A"/>
-            <TextBlock Text="Computación Bio-Inspirada: Pensamiento Dual (S1/S2) • Generador Autorregresivo Spike-LLM (Sin KV-Cache) • k-NN por TTFS • Plasticidad STDP" 
-                       FontSize="13" Foreground="#9BA4B5" Margin="0,3,0,0"/>
-        </StackPanel>
-
-        <!-- Row 1: Decision & Benchmark Buttons -->
-        <Border Grid.Row="1" Background="#1D2030" CornerRadius="8" Padding="10,8" Margin="0,0,0,10">
-            <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <Button x:Name="BtnFastThinking" Content="⚡ Sistema 1: Inferencia Rápida" Click="BtnFastThinking_Click" Margin="0,0,8,0"/>
-                <Button x:Name="BtnDeliberativeThinking" Content="🧠 Sistema 2: Deliberación Recurrente" Click="BtnDeliberativeThinking_Click" Margin="0,0,8,0"/>
-                <Button x:Name="BtnKnnBenchmark" Content="📊 Benchmark k-NN (Neuromórfico vs Euclidiano)" Click="BtnKnnBenchmark_Click" Margin="0,0,8,0"/>
-                <Button x:Name="BtnStdpLearn" Content="🌱 Plasticidad STDP" Click="BtnStdpLearn_Click" Margin="0,0,8,0"/>
-                <Button x:Name="BtnResetEngine" Content="🔄 Reiniciar Estado" Click="BtnResetEngine_Click"/>
-            </WrapPanel>
-        </Border>
-
-        <!-- Row 2: Text Generation / Spike-LLM Input -->
-        <Border Grid.Row="2" Background="#1A1E2C" CornerRadius="8" Padding="12,10" Margin="0,0,0,14" BorderBrush="#2F3650" BorderThickness="1">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="Prompt Semilla:" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#8BE8CB" Margin="0,0,10,0"/>
-                <TextBox Grid.Column="1" x:Name="TxtPrompt" Text="el sol produce" VerticalAlignment="Center"
-                         Background="#11131C" Foreground="#FFFFFF" BorderBrush="#3D4566" BorderThickness="1"
-                         Padding="8,5" FontFamily="Consolas" FontSize="13" Margin="0,0,10,0"/>
-                <Button Grid.Column="2" x:Name="BtnGenerateText" Content="✨ Generar Texto (Spike-LLM)" Click="BtnGenerateText_Click" Margin="0,0,8,0" Background="#343E63"/>
-                <Button Grid.Column="3" x:Name="BtnTrainCorpus" Content="📚 Entrenar Corpus" Click="BtnTrainCorpus_Click"/>
-            </Grid>
-        </Border>
-
-        <!-- Main Workspace -->
-        <Grid Grid.Row="3">
+        <!-- HEADER MODERNO -->
+        <Grid Grid.Row="0" Margin="0,0,0,14">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="380"/>
                 <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Metrics Card -->
-            <Border Grid.Column="0" Background="#1D2030" CornerRadius="8" Padding="16" Margin="0,0,14,0">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel>
-                        <TextBlock Text="MÉTRICAS DEL SISTEMA" FontWeight="Bold" FontSize="14" Foreground="#7077A1" Margin="0,0,0,12"/>
+            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Width="10" Height="26" CornerRadius="4" Margin="0,0,10,0">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#38BDF8" Offset="0"/>
+                                <GradientStop Color="#818CF8" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+                    <TextBlock Text="103KNN Neural Studio" FontSize="23" FontWeight="Bold" Foreground="{DynamicResource TextPrimary}"/>
+                </StackPanel>
+                <TextBlock x:Name="TxtHeaderSubtitle" Text="Interactive Topology Design • Multi-Architecture Training • Efficiency Benchmark"
+                           FontSize="12.5" Foreground="{DynamicResource TextSecondary}" Margin="20,2,0,0"/>
+            </StackPanel>
 
-                        <TextBlock Text="Operación Activa:" Foreground="#9BA4B5" FontSize="12"/>
-                        <TextBlock x:Name="TxtMode" Text="Listo para operar" FontSize="15" FontWeight="Bold" Foreground="#F6B17A" Margin="0,2,0,10"/>
-
-                        <TextBlock Text="Decisión / Resultado Clave:" Foreground="#9BA4B5" FontSize="12"/>
-                        <TextBlock x:Name="TxtWinner" Text="-" FontSize="16" FontWeight="Bold" Foreground="#4E9F3D" Margin="0,2,0,10"/>
-
-                        <TextBlock Text="Salida Temprana (Early Exit):" Foreground="#9BA4B5" FontSize="12"/>
-                        <TextBlock x:Name="TxtEarlyExit" Text="-" FontSize="13" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,2,0,10"/>
-
-                        <TextBlock Text="Confianza / Consenso:" Foreground="#9BA4B5" FontSize="12"/>
-                        <TextBlock x:Name="TxtConfidence" Text="-" FontSize="14" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,2,0,10"/>
-
-                        <TextBlock Text="Pasos / Tokens Producidos:" Foreground="#9BA4B5" FontSize="12"/>
-                        <TextBlock x:Name="TxtSteps" Text="-" FontSize="13" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,2,0,10"/>
-
-                        <TextBlock Text="Cómputo Disperso (Espigas / SOPs):" Foreground="#9BA4B5" FontSize="12"/>
-                        <TextBlock x:Name="TxtSpikes" Text="-" FontSize="14" FontWeight="SemiBold" Foreground="#F6B17A" Margin="0,2,0,10"/>
-
-                        <TextBlock Text="Memoria / Eficiencia:" Foreground="#9BA4B5" FontSize="12"/>
-                        <TextBlock x:Name="TxtEfficiency" Text="-" FontSize="13" FontWeight="SemiBold" Foreground="#8BE8CB" Margin="0,2,0,10"/>
-
-                        <TextBlock Text="Latencia:" Foreground="#9BA4B5" FontSize="12"/>
-                        <TextBlock x:Name="TxtLatency" Text="-" FontSize="14" FontWeight="SemiBold" Foreground="#68B984" Margin="0,2,0,4"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Name="BtnLangToggle" Content="🌐 ES" Click="BtnLangToggle_Click"
+                        Padding="12,6" Margin="0,0,8,0" FontSize="12"/>
+                <Button x:Name="BtnThemeToggle" Content="🌙 Dark Theme" Click="BtnThemeToggle_Click"
+                        Padding="12,6" Margin="0,0,10,0" FontSize="12"/>
+                <Border Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="16" Padding="12,6" Margin="0,0,10,0">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="8" Height="8" Fill="#34D399" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="TxtServerStatus" Text="API: localhost:5000" FontSize="12" Foreground="{DynamicResource TextSecondary}"/>
                     </StackPanel>
-                </ScrollViewer>
-            </Border>
+                </Border>
+                <Border Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource AccentPrimary}" BorderThickness="1" CornerRadius="16" Padding="14,6">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="LblHeaderArchPrefix" Text="Architecture: " Foreground="{DynamicResource TextSecondary}" FontSize="12"/>
+                        <TextBlock x:Name="TxtActiveModelBadge" Text="103KNN Neuromorphic" FontWeight="Bold" FontSize="12" Foreground="{DynamicResource AccentPrimary}"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
 
-            <!-- Console Log -->
-            <Border Grid.Column="1" Background="#1D2030" CornerRadius="8" Padding="16">
-                <Grid>
+        <!-- NAVEGACIÓN PRINCIPAL -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
+            <RadioButton x:Name="NavDesigner" Content="Architecture Designer" Style="{StaticResource NavTabStyle}" IsChecked="True" Checked="NavDesigner_Checked"/>
+            <RadioButton x:Name="NavTrainer" Content="Trainer &amp; Evaluation" Style="{StaticResource NavTabStyle}" Checked="NavTrainer_Checked"/>
+            <RadioButton x:Name="NavBenchmark" Content="Architecture Comparator" Style="{StaticResource NavTabStyle}" Checked="NavBenchmark_Checked"/>
+        </StackPanel>
+
+        <Grid Grid.Row="2">
+            <!-- VISTA 1: DISEÑADOR DE ARQUITECTURA -->
+            <Grid x:Name="ViewDesigner" Visibility="Visible">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="340"/>
+                </Grid.ColumnDefinitions>
+
+                <Grid Grid.Column="0" Margin="0,0,16,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="135"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="TELEMETRÍA NEUROMÓRFICA EN VIVO" FontWeight="Bold" FontSize="14" Foreground="#7077A1" Margin="0,0,0,8"/>
-                    <TextBox Grid.Row="1" x:Name="TxtConsole" 
-                             Background="#11131C" Foreground="#8BE8CB" BorderThickness="1" BorderBrush="#2D3349"
-                             FontFamily="Consolas" FontSize="12"
-                             IsReadOnly="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-                             Padding="10"/>
+
+                    <Border Grid.Row="0" Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1,1,1,0" CornerRadius="10,10,0,0" Padding="14,9">
+                        <Grid>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="LblTopologyTitle" Text="Network Topology" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                                <TextBlock x:Name="TxtTopologyStats" Text="Layers: 4  •  Neurons: 43  •  Connections: 328" FontSize="12" Foreground="{DynamicResource AccentPrimary}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <TextBlock x:Name="LblTopologyHint" Text="Click 2 adjacent neurons to toggle connections" FontSize="11.5" Foreground="{DynamicResource TextMuted}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Row="1" Background="{DynamicResource BgInput}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="0,0,10,10" Margin="0,0,0,10" Padding="2">
+                        <studio:InteractiveNetCanvas x:Name="DesignerCanvas"/>
+                    </Border>
+
+                    <ProgressBar Grid.Row="2" x:Name="BuildProgressBar" Height="6" Minimum="0" Maximum="100" Value="0"
+                                 Background="{DynamicResource BgCard}" Foreground="{DynamicResource AccentPrimary}" BorderThickness="0" Margin="0,0,0,10"/>
+
+                    <Border Grid.Row="3" Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="10" Padding="10">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock x:Name="LblDesignerLogTitle" Text="DESIGN LOG" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource TextMuted}" Margin="2,0,0,6"/>
+                            <TextBox Grid.Row="1" x:Name="TxtDesignerLog" Foreground="{DynamicResource AccentSuccess}" FontSize="11.5"
+                                     IsReadOnly="True" VerticalScrollBarVisibility="Auto" BorderThickness="0" Padding="6,4"/>
+                        </Grid>
+                    </Border>
                 </Grid>
-            </Border>
+
+                <Border Grid.Column="1" Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="10" Padding="16">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <TextBlock x:Name="LblArchTypeTitle" Text="ARCHITECTURE TYPE" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource TextMuted}" Margin="0,0,0,6"/>
+                            <ComboBox x:Name="CmbArchitecture" SelectedIndex="3" Margin="0,0,0,16" SelectionChanged="CmbArchitecture_SelectionChanged">
+                                <ComboBoxItem x:Name="CmbArchNowral" Content="Nowral (Static)"/>
+                                <ComboBoxItem x:Name="CmbArchLibQuid" Content="LibQuid (Liquid)"/>
+                                <ComboBoxItem x:Name="CmbArchNewNow" Content="NewNow (Dynamic)"/>
+                                <ComboBoxItem x:Name="CmbArchNeuro" Content="103KNN Neuromorphic"/>
+                            </ComboBox>
+
+                            <Grid Margin="0,0,0,14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="BtnShowNetProps" Content="Network Props" Grid.Column="0" Margin="0,0,4,0" Click="BtnShowNetProps_Click"
+                                        BorderBrush="{DynamicResource AccentPrimary}" Foreground="{DynamicResource AccentPrimary}"/>
+                                <Button x:Name="BtnShowTrainProps" Content="Training Config" Grid.Column="1" Margin="4,0,0,0" Click="BtnShowTrainProps_Click"/>
+                            </Grid>
+
+                            <Border x:Name="PnlNetProperties" Background="{DynamicResource BgElevated}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,14">
+                                <StackPanel>
+                                    <TextBlock x:Name="LblStructure" Text="Structure (neurons per layer)" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,5"/>
+                                    <TextBox x:Name="TxtStructure" Text="2 32 8 1" Margin="0,0,0,12"/>
+
+                                    <TextBlock x:Name="LblActivation" Text="Activation Function" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,5"/>
+                                    <ComboBox x:Name="CmbActivation" SelectedIndex="2">
+                                        <ComboBoxItem Content="ReLU"/>
+                                        <ComboBoxItem Content="Sigmoid"/>
+                                        <ComboBoxItem Content="LeakyReLU"/>
+                                    </ComboBox>
+                                </StackPanel>
+                            </Border>
+
+                            <Border x:Name="PnlTrainProperties" Visibility="Collapsed" Background="{DynamicResource BgElevated}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,14">
+                                <StackPanel>
+                                    <TextBlock Text="Learning Rate" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4"/>
+                                    <TextBox x:Name="TxtLearningRate" Text="0.005" Margin="0,0,0,10"/>
+
+                                    <TextBlock Text="Batch Size" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4"/>
+                                    <TextBox x:Name="TxtBatchSize" Text="64" Margin="0,0,0,10"/>
+
+                                    <TextBlock x:Name="LblOptimizer" Text="Optimizer" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4"/>
+                                    <ComboBox x:Name="CmbOptimizer" SelectedIndex="0" Margin="0,0,0,10">
+                                        <ComboBoxItem Content="Adam"/>
+                                        <ComboBoxItem Content="SGD"/>
+                                        <ComboBoxItem Content="RMSprop"/>
+                                    </ComboBox>
+
+                                    <TextBlock x:Name="LblStdpRate" Text="STDP Rate (103KNN Neuromorphic)" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4"/>
+                                    <TextBox x:Name="TxtStdpRate" Text="0.002"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Button x:Name="BtnApplyStructure" Content="Apply Structure" Click="BtnApplyStructure_Click" Margin="0,0,0,8"/>
+                            <Button x:Name="BtnFullConnect" Content="Full Connectivity" Click="BtnFullConnect_Click" Margin="0,0,0,10"/>
+                            <Button x:Name="BtnBuildNetwork" Content="Build Network" Click="BtnBuildNetwork_Click" Margin="0,0,0,12"
+                                    BorderBrush="#818CF8"/>
+
+                            <Button x:Name="BtnStartTraining" Content="Go to Training →" Click="BtnStartTraining_Click"
+                                    Foreground="#FFFFFF" BorderThickness="0" Padding="12,11">
+                                <Button.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Color="#0284C7" Offset="0"/>
+                                        <GradientStop Color="#4F46E5" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Button.Background>
+                            </Button>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+
+            <!-- VISTA 2: ENTRENADOR Y EVALUACIÓN -->
+            <Grid x:Name="ViewTrainer" Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="340"/>
+                </Grid.ColumnDefinitions>
+
+                <Grid Grid.Column="0" Margin="0,0,16,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="1.15*"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="130"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Tarjetas KPI -->
+                    <Grid Grid.Row="0" Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="10" Padding="14,10" Margin="0,0,8,0">
+                            <StackPanel>
+                                <TextBlock x:Name="LblKpiDataset" Text="DATASET" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource TextMuted}"/>
+                                <TextBlock x:Name="LblTrainerSamples" Text="0 samples" FontSize="17" FontWeight="Bold" Foreground="{DynamicResource TextPrimary}" Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="1" Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="10" Padding="14,10" Margin="4,0,8,0">
+                            <StackPanel>
+                                <TextBlock x:Name="LblKpiEpoch" Text="CURRENT EPOCH" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource TextMuted}"/>
+                                <TextBlock x:Name="LblTrainerEpoch" Text="0" FontSize="17" FontWeight="Bold" Foreground="#818CF8" Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="2" Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="10" Padding="14,10" Margin="4,0,8,0">
+                            <StackPanel>
+                                <TextBlock x:Name="LblKpiMse" Text="MSE LOSS" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource TextMuted}"/>
+                                <TextBlock x:Name="LblTrainerMSE" Text="0.000000" FontSize="17" FontWeight="Bold" Foreground="{DynamicResource AccentPrimary}" Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="3" Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="10" Padding="14,10" Margin="4,0,0,0">
+                            <StackPanel>
+                                <TextBlock x:Name="LblTrainerOpsTitle" Text="SPIKES / SAMPLE" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource TextMuted}"/>
+                                <TextBlock x:Name="LblTrainerOps" Text="0" FontSize="17" FontWeight="Bold" Foreground="{DynamicResource AccentSuccess}" Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <Border Grid.Row="1" Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="10" Margin="0,0,0,10" Padding="10">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock x:Name="LblLossChartTitle" Text="CONVERGENCE CURVE (REAL-TIME MSE)" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource TextMuted}" Margin="2,0,0,6"/>
+                            <Border Grid.Row="1" Background="{DynamicResource BgInput}" CornerRadius="6" ClipToBounds="True">
+                                <studio:TrainingLossChart x:Name="LossChart"/>
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Row="2" Background="{DynamicResource BgInput}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="10" Margin="0,0,0,10" Padding="2">
+                        <studio:InteractiveNetCanvas x:Name="TrainerCanvas"/>
+                    </Border>
+
+                    <Border Grid.Row="3" Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="10" Padding="10">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock x:Name="LblTrainerLogTitle" Text="TRAINING CONSOLE" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource TextMuted}" Margin="2,0,0,6"/>
+                            <TextBox Grid.Row="1" x:Name="TxtTrainerLog" Foreground="{DynamicResource AccentSuccess}" FontSize="11.5"
+                                     IsReadOnly="True" VerticalScrollBarVisibility="Auto" BorderThickness="0" Padding="6,4"/>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <Border Grid.Column="1" Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="10" Padding="16">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <TextBlock x:Name="LblTrainerTitle" Text="103KNN NEUROMORPHIC" FontSize="13.5" FontWeight="Bold" Foreground="{DynamicResource AccentPrimary}" Margin="0,0,0,12"/>
+
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="BtnSaveModel" Content="Save Model" Grid.Column="0" Margin="0,0,4,0" Click="BtnSaveModel_Click"/>
+                                <Button x:Name="BtnLoadModel" Content="Load Model" Grid.Column="1" Margin="4,0,0,0" Click="BtnLoadModel_Click"/>
+                            </Grid>
+
+                            <Border Background="{DynamicResource BgElevated}" CornerRadius="8" Padding="12" Margin="0,0,0,12" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock x:Name="LblDatasetGoalTitle" Text="DATASET &amp; TARGET" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource TextMuted}" Margin="0,0,0,8"/>
+                                    <Grid Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Button x:Name="BtnLoadCsv" Content="Load CSV" Grid.Column="0" Margin="0,0,4,0" Click="BtnLoadCsv_Click"/>
+                                        <Button x:Name="BtnLoadParquet" Content="Load Parquet" Grid.Column="1" Margin="4,0,0,0" Click="BtnLoadParquet_Click"/>
+                                    </Grid>
+
+                                    <Grid Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock x:Name="LblTargetError" Text="Target Error (MSE):" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,8,0"/>
+                                        <TextBox Grid.Column="1" x:Name="TxtTargetError" Text="0.0001"/>
+                                    </Grid>
+
+                                    <Button x:Name="BtnResetTrainer" Content="Reset Weights" Click="BtnResetTrainer_Click"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Grid Margin="0,0,0,14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="BtnTrainerStart" Content="▶ Start" Grid.Column="0" Margin="0,0,4,0"
+                                        Background="#059669" Foreground="#FFFFFF" BorderBrush="#10B981" Click="BtnTrainerStart_Click"/>
+                                <Button x:Name="BtnTrainerStop" Content="⏹ Stop" Grid.Column="1" Margin="4,0,0,0"
+                                        Background="#B91C1C" Foreground="#FFFFFF" BorderBrush="#EF4444" IsEnabled="False" Click="BtnTrainerStop_Click"/>
+                            </Grid>
+
+                            <Border Background="{DynamicResource BgElevated}" CornerRadius="8" Padding="12" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock x:Name="LblLiveInferenceTitle" Text="LIVE INFERENCE" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource TextMuted}" Margin="0,0,0,8"/>
+                                    <TextBlock x:Name="LblInputValuesHint" Text="Input values (comma-separated)" FontSize="11.5" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4"/>
+                                    <TextBox x:Name="TxtPredictInput" Text="0.5, 0.5" Margin="0,0,0,8"/>
+                                    <Button x:Name="BtnPredict" Content="Run Prediction" Click="BtnPredict_Click" Margin="0,0,0,10"
+                                            BorderBrush="{DynamicResource AccentPrimary}" Foreground="{DynamicResource AccentPrimary}"/>
+                                    <Border Background="{DynamicResource BgInput}" CornerRadius="6" Padding="10" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1">
+                                        <TextBlock x:Name="LblPredictResult" Text="Result: -" FontWeight="Bold" Foreground="{DynamicResource AccentSuccess}" TextWrapping="Wrap"/>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+
+            <!-- VISTA 3: COMPARADOR DE ARQUITECTURAS -->
+            <Grid x:Name="ViewBenchmark" Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="340"/>
+                </Grid.ColumnDefinitions>
+
+                <Grid Grid.Column="0" Margin="0,0,16,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="230"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="10" Margin="0,0,0,12" Padding="12">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock x:Name="LblBenchChartTitle" Text="TIME &amp; CONVERGENCE COMPARISON" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource TextMuted}" Margin="2,0,0,8"/>
+                            <Border Grid.Row="1" Background="{DynamicResource BgInput}" CornerRadius="6" ClipToBounds="True">
+                                <studio:BenchmarkBarChart x:Name="BenchChart"/>
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Row="1" Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="10" Padding="12">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock x:Name="LblBenchTableTitle" Text="COMPARATIVE METRICS BY ARCHITECTURE" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource TextMuted}" Margin="2,0,0,8"/>
+                            <DataGrid Grid.Row="1" x:Name="BenchDataGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                                      Background="{DynamicResource BgInput}" Foreground="{DynamicResource TextPrimary}"
+                                      BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1"
+                                      RowBackground="{DynamicResource BgCard}" AlternatingRowBackground="{DynamicResource BgElevated}"
+                                      GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource BorderSubtle}"
+                                      HeadersVisibility="Column" FontSize="12.5" RowHeight="34">
+                                <DataGrid.ColumnHeaderStyle>
+                                    <Style TargetType="DataGridColumnHeader">
+                                        <Setter Property="Background" Value="{DynamicResource BgControl}"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+                                        <Setter Property="FontWeight" Value="Bold"/>
+                                        <Setter Property="Padding" Value="10,8"/>
+                                        <Setter Property="BorderThickness" Value="0,0,1,1"/>
+                                        <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtle}"/>
+                                    </Style>
+                                </DataGrid.ColumnHeaderStyle>
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn x:Name="ColBenchArch" Header="Architecture" Binding="{Binding Architecture}" Width="1.4*"/>
+                                    <DataGridTextColumn x:Name="ColBenchMse" Header="Final MSE" Binding="{Binding FinalMseDisplay}" Width="*"/>
+                                    <DataGridTextColumn x:Name="ColBenchEpochs" Header="Epochs" Binding="{Binding EpochsRun}" Width="0.7*"/>
+                                    <DataGridTextColumn x:Name="ColBenchTime" Header="Total Time" Binding="{Binding TotalMsDisplay}" Width="*"/>
+                                    <DataGridTextColumn x:Name="ColBenchMsEpoch" Header="ms / Epoch" Binding="{Binding MsPerEpochDisplay}" Width="*"/>
+                                    <DataGridTextColumn x:Name="ColBenchInference" Header="Infer (µs/sample)" Binding="{Binding InferenceDisplay}" Width="*"/>
+                                    <DataGridTextColumn x:Name="ColBenchOps" Header="Ops / Spikes" Binding="{Binding OpsDisplay}" Width="*"/>
+                                    <DataGridTextColumn x:Name="ColBenchResult" Header="Result" Binding="{Binding Status}" Width="1.3*"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <Border Grid.Column="1" Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="10" Padding="16">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <TextBlock x:Name="LblBenchConfigTitle" Text="BENCHMARK SETUP" FontSize="13.5" FontWeight="Bold" Foreground="{DynamicResource AccentPrimary}" Margin="0,0,0,12"/>
+
+                            <Border Background="{DynamicResource BgElevated}" CornerRadius="8" Padding="12" Margin="0,0,0,12" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock x:Name="LblBenchArchsTitle" Text="ARCHITECTURES TO EVALUATE" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource TextMuted}" Margin="0,0,0,8"/>
+                                    <CheckBox x:Name="ChkBenchNowral" Content="Nowral (Static)" IsChecked="True" Margin="0,0,0,6"/>
+                                    <CheckBox x:Name="ChkBenchLibQuid" Content="LibQuid (Liquid)" IsChecked="True" Margin="0,0,0,6"/>
+                                    <CheckBox x:Name="ChkBenchNewNow" Content="NewNow (Dynamic)" IsChecked="True" Margin="0,0,0,6"/>
+                                    <CheckBox x:Name="ChkBenchNeuro" Content="103KNN Neuromorphic" IsChecked="True"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="{DynamicResource BgElevated}" CornerRadius="8" Padding="12" Margin="0,0,0,12" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock x:Name="LblBenchDatasetTitle" Text="COMMON DATASET &amp; TOPOLOGY" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource TextMuted}" Margin="0,0,0,8"/>
+                                    <TextBlock x:Name="LblBenchTopology" Text="Topology: 2-32-8-1 (328 connections)" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AccentPrimary}" Margin="0,0,0,4" TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="LblBenchDataset" Text="Active dataset: 0 samples" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,8"/>
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Button x:Name="BtnBenchLoadCsv" Content="Load CSV" Grid.Column="0" Margin="0,0,4,0" Click="BtnLoadCsv_Click"/>
+                                        <Button x:Name="BtnBenchLoadParquet" Content="Load Parquet" Grid.Column="1" Margin="4,0,0,0" Click="BtnLoadParquet_Click"/>
+                                    </Grid>
+                                    <Button x:Name="BtnBenchSynthetic" Content="Generate Synthetic Dataset (240)" Click="BtnBenchSynthetic_Click"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="{DynamicResource BgElevated}" CornerRadius="8" Padding="12" Margin="0,0,0,14" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock x:Name="LblBenchParamsTitle" Text="TEST PARAMETERS" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource TextMuted}" Margin="0,0,0,8"/>
+                                    <TextBlock x:Name="LblBenchMaxEpochs" Text="Max Epochs per Model" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4"/>
+                                    <TextBox x:Name="TxtBenchEpochs" Text="40" Margin="0,0,0,10"/>
+
+                                    <TextBlock x:Name="LblBenchTargetMse" Text="Target Error (MSE)" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4"/>
+                                    <TextBox x:Name="TxtBenchTargetError" Text="0.0001"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="BtnRunBenchmark" Content="▶ Run Benchmark" Grid.Column="0" Margin="0,0,6,0"
+                                        Background="#0284C7" Foreground="#FFFFFF" BorderBrush="#38BDF8" Click="BtnRunBenchmark_Click"/>
+                                <Button x:Name="BtnStopBenchmark" Content="⏹" Grid.Column="1" Padding="14,8"
+                                        Background="#B91C1C" Foreground="#FFFFFF" BorderBrush="#EF4444" IsEnabled="False" Click="BtnStopBenchmark_Click"/>
+                            </Grid>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
         </Grid>
     </Grid>
 </Window>

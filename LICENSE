@@ -1,0 +1,38 @@
+Copyright (c) 2024-2026 Erisnel Lora Sugve. All Rights Reserved.
+
+103KNN & 103KNN.Neuromorphic Dual-Licensing Notice
+==================================================
+
+This software, documentation, and the neuromorphic architecture described herein
+are subject to a dual-licensing model:
+
+1. Open Source & Academic Use (GNU GPLv3):
+   This work is licensed under the GNU General Public License v3.0 (GPLv3).
+   You may use, study, modify, and redistribute this software provided that any
+   derivative works or distributions are also released with full source code
+   under the terms of the GNU GPLv3.
+   Full GPLv3 text: https://www.gnu.org/licenses/gpl-3.0.txt
+
+2. Commercial & Private Use (Private Commercial License):
+   For the implementation or integration of 103KNN or 103KNN.Neuromorphic in
+   proprietary products, closed-source systems, or commercial ventures where
+   the user does not disclose their full source code under GPLv3, a Private
+   Commercial License is strictly required from the author.
+
+All Rights Reserved:
+Except as expressly permitted under the GNU GPLv3 (which requires full source
+code disclosure of any derivative work), all rights are reserved. Any
+proprietary or closed-source commercial implementation of 103KNN and
+103KNN.Neuromorphic (including its TTFS spike encoding, LIF neurons, STDP /
+Surrogate-Gradient training, and sparse topology engine) is prohibited without
+a prior written Commercial License agreement.
+
+Third-Party Components:
+The desktop studio (103KNN) links third-party packages including TorchSharp and
+ParquetSharp, which are licensed under the Apache License, Version 2.0.
+103KNN.Neuromorphic is 100% original C# code with zero third-party dependencies.
+
+Contact for Licensing:
+- Author: Erisnel Lora Sugve
+- Email: lorasugve@gmail.com
+- Location: Santiago de Cuba, Cuba

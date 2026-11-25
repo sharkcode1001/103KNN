@@ -6,14 +6,16 @@ namespace _103KNN.Neuromorphic.Layers;
 /// <summary>
 /// Capa sináptica con propagación 100% orientada a eventos (Event-Driven).
 /// Solo procesa cálculos cuando arriba una espiga, eliminando multiplicaciones matriciales densas ociosas.
+/// Soporta expansión dinámica de neuronas de salida para nuevos tokens de vocabulario.
 /// </summary>
 public sealed class SpikeSynapticLayer
 {
     private readonly int _inputDim;
-    private readonly int _outputDim;
-    private readonly float[,] _weights;
-    private readonly CognitiveLifNeuron[] _neurons;
+    private int _outputDim;
+    private float[,] _weights;
+    private readonly List<CognitiveLifNeuron> _neurons = new();
     private readonly CognitiveConfig _config;
+    private readonly HashSet<int> _activeExcitedNeurons = new();
 
     public SpikeSynapticLayer(int inputDim, int outputDim, CognitiveConfig? config = null, Random? rng = null, float gain = 1.6f)
     {
@@ -21,14 +23,13 @@ public sealed class SpikeSynapticLayer
         _outputDim = outputDim;
         _config = config ?? new CognitiveConfig();
         _weights = new float[outputDim, inputDim];
-        _neurons = new CognitiveLifNeuron[outputDim];
 
         var rand = rng ?? new Random(42);
         float stdDev = MathF.Sqrt(2.0f / (inputDim + outputDim)) * gain;
 
         for (int i = 0; i < outputDim; i++)
         {
-            _neurons[i] = new CognitiveLifNeuron(i, _config);
+            _neurons.Add(new CognitiveLifNeuron(i, _config));
             for (int j = 0; j < inputDim; j++)
             {
                 // Inicialización Xavier/Glorot simétrica
@@ -40,12 +41,55 @@ public sealed class SpikeSynapticLayer
     public int InputDim => _inputDim;
     public int OutputDim => _outputDim;
     public IReadOnlyList<CognitiveLifNeuron> Neurons => _neurons;
+    public IReadOnlyCollection<int> ActiveExcitedNeurons => _activeExcitedNeurons;
+
+    /// <summary>
+    /// Expande dinámicamente la cantidad de neuronas de salida (ej. cuando se amplía el vocabulario).
+    /// </summary>
+    public void ExpandOutputDim(int newOutputDim, float gain = 1.6f, Random? rng = null)
+    {
+        if (newOutputDim <= _outputDim) return;
+
+        var rand = rng ?? new Random(42);
+        float stdDev = MathF.Sqrt(2.0f / (_inputDim + newOutputDim)) * gain;
+
+        float[,] newWeights = new float[newOutputDim, _inputDim];
+        for (int i = 0; i < _outputDim; i++)
+        {
+            for (int j = 0; j < _inputDim; j++)
+            {
+                newWeights[i, j] = _weights[i, j];
+            }
+        }
+
+        for (int i = _outputDim; i < newOutputDim; i++)
+        {
+            _neurons.Add(new CognitiveLifNeuron(i, _config));
+            for (int j = 0; j < _inputDim; j++)
+            {
+                newWeights[i, j] = (float)((rand.NextDouble() * 2.0 - 1.0) * stdDev);
+            }
+        }
+
+        _weights = newWeights;
+        _outputDim = newOutputDim;
+    }
 
     /// <summary>
     /// Acceso directo a los pesos sinápticos [neuronaDestino, caracteristicaEntrada].
     /// </summary>
-    public float GetWeight(int targetNeuron, int inputFeature) => _weights[targetNeuron, inputFeature];
-    public void SetWeight(int targetNeuron, int inputFeature, float value) => _weights[targetNeuron, inputFeature] = value;
+    public float GetWeight(int targetNeuron, int inputFeature)
+    {
+        if (targetNeuron >= 0 && targetNeuron < _outputDim && inputFeature >= 0 && inputFeature < _inputDim)
+            return _weights[targetNeuron, inputFeature];
+        return 0.0f;
+    }
+
+    public void SetWeight(int targetNeuron, int inputFeature, float value)
+    {
+        if (targetNeuron >= 0 && targetNeuron < _outputDim && inputFeature >= 0 && inputFeature < _inputDim)
+            _weights[targetNeuron, inputFeature] = value;
+    }
 
     /// <summary>
     /// Propaga un lote de espigas entrantes mediante acumulación dirigida por eventos.
@@ -68,17 +112,22 @@ public sealed class SpikeSynapticLayer
                 float weight = _weights[post, spike.FeatureIndex];
                 float current = weight * spike.Magnitude * spike.Polarity;
 
-                if (_neurons[post].Integrate(current, spike.Timestamp))
+                if (MathF.Abs(current) > 1e-5f)
                 {
-                    firedNeuronIndex = post;
-                    outputSpikes.Add(new Spike(post, spike.Timestamp, 1.0f, 1));
+                    _activeExcitedNeurons.Add(post);
+
+                    if (_neurons[post].Integrate(current, spike.Timestamp))
+                    {
+                        firedNeuronIndex = post;
+                        outputSpikes.Add(new Spike(post, spike.Timestamp, 1.0f, 1));
+                    }
                 }
             }
 
-            // Si alguna neurona disparó, aplicar inhibición lateral a sus competidoras directas
+            // Si alguna neurona disparó, aplicar inhibición lateral a las competidoras excitadas
             if (firedNeuronIndex >= 0)
             {
-                for (int post = 0; post < _outputDim; post++)
+                foreach (int post in _activeExcitedNeurons)
                 {
                     if (post != firedNeuronIndex)
                     {
@@ -92,25 +141,20 @@ public sealed class SpikeSynapticLayer
         return outputSpikes;
     }
 
-    /// <summary>
-    /// Avanza un ciclo pasivo en todas las neuronas de la capa.
-    /// </summary>
     public void Step()
     {
-        for (int i = 0; i < _outputDim; i++)
+        foreach (var neuron in _neurons)
         {
-            _neurons[i].Step();
+            neuron.Step();
         }
     }
 
-    /// <summary>
-    /// Reinicia los estados de membrana de todas las neuronas.
-    /// </summary>
     public void Reset()
     {
-        for (int i = 0; i < _outputDim; i++)
+        _activeExcitedNeurons.Clear();
+        foreach (var neuron in _neurons)
         {
-            _neurons[i].Reset();
+            neuron.Reset();
         }
     }
 }

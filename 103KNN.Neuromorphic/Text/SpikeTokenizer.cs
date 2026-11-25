@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace _103KNN.Neuromorphic.Text;
@@ -84,11 +85,12 @@ public sealed class SpikeTokenizer
     }
 
     /// <summary>
-    /// Decodifica una secuencia de IDs de tokens de vuelta a texto legible.
+    /// Decodifica una secuencia de IDs de tokens de vuelta a texto legible,
+    /// convirtiendo los códigos de escape BPE (Ġ -> espacio, Ċ -> salto de línea).
     /// </summary>
     public string Decode(IReadOnlyList<int> tokenIds, bool skipSpecialTokens = true)
     {
-        var words = new List<string>(tokenIds.Count);
+        var sb = new StringBuilder();
 
         foreach (var id in tokenIds)
         {
@@ -98,10 +100,27 @@ public sealed class SpikeTokenizer
             if (skipSpecialTokens && id is PadId or BosId or EosId)
                 continue;
 
-            words.Add(_idToToken[id]);
+            string token = _idToToken[id];
+
+            // Decodificar artefactos BPE de GPT-2 / Qwen
+            // Ġ (\u0120) representa el espacio previo
+            // Ċ (\u010A) representa el salto de línea '\n'
+            string decoded = token
+                .Replace('Ġ', ' ')
+                .Replace(" ", " ")
+                .Replace('Ċ', '\n')
+                .Replace('ĉ', '\t');
+
+            sb.Append(decoded);
+            if (!token.StartsWith('Ġ') && !token.StartsWith(' '))
+            {
+                sb.Append(' ');
+            }
         }
 
-        return string.Join(" ", words);
+        // Normalizar espacios y saltos de línea
+        string result = System.Text.RegularExpressions.Regex.Replace(sb.ToString(), @"[ ]{2,}", " ");
+        return result.Trim();
     }
 
     public string GetToken(int id)

@@ -7,10 +7,21 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="ParquetSharp" Version="21.0.0" />
+    <PackageReference Include="TorchSharp" Version="0.105.2" />
+    <PackageReference Include="TorchSharp-cpu" Version="0.105.2" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\103KNN.Neuromorphic\103KNN.Neuromorphic.csproj" />
+    <ProjectReference Include="..\LibQuid\LibQuid.csproj" />
+    <ProjectReference Include="..\NewNow\NewNow.csproj" />
+    <ProjectReference Include="..\NowLib\NowLib.csproj" />
+    <ProjectReference Include="..\Nowral\Nowral.csproj" />
   </ItemGroup>
 
 </Project>

@@ -5,40 +5,45 @@ namespace _103KNN.Neuromorphic.Text;
 
 /// <summary>
 /// Tabla de embeddings que mapea identificadores de tokens a representaciones latentes y trenes de espigas temporales.
+/// Soporta expansión dinámica de vocabulario para admitir nuevos tokens durante el entrenamiento.
 /// </summary>
 public sealed class SpikeEmbeddingTable
 {
-    private readonly int _vocabSize;
     private readonly int _embeddingDim;
-    private readonly float[][] _embeddings;
+    private readonly List<float[]> _embeddings = new();
     private readonly ISpikeEncoder _spikeEncoder;
+    private readonly Random _rand;
+    private readonly float _scale;
 
-    public SpikeEmbeddingTable(int vocabSize, int embeddingDim, Random? rng = null)
+    public SpikeEmbeddingTable(int initialVocabSize, int embeddingDim, Random? rng = null)
     {
-        _vocabSize = vocabSize;
         _embeddingDim = embeddingDim;
-        _embeddings = new float[vocabSize][];
+        _rand = rng ?? new Random(2026);
+        _scale = 1.0f / MathF.Sqrt(embeddingDim);
         _spikeEncoder = new TimeToFirstSpikeEncoder();
 
-        var rand = rng ?? new Random(2026);
-        float scale = 1.0f / MathF.Sqrt(embeddingDim);
+        EnsureCapacity(initialVocabSize);
+    }
 
-        for (int i = 0; i < vocabSize; i++)
+    public int VocabSize => _embeddings.Count;
+    public int EmbeddingDim => _embeddingDim;
+
+    public void EnsureCapacity(int size)
+    {
+        while (_embeddings.Count < size)
         {
-            _embeddings[i] = new float[embeddingDim];
-            for (int d = 0; d < embeddingDim; d++)
+            float[] vec = new float[_embeddingDim];
+            for (int d = 0; d < _embeddingDim; d++)
             {
-                _embeddings[i][d] = (float)((rand.NextDouble() * 2.0 - 1.0) * scale);
+                vec[d] = (float)((_rand.NextDouble() * 2.0 - 1.0) * _scale);
             }
+            _embeddings.Add(vec);
         }
     }
 
-    public int VocabSize => _vocabSize;
-    public int EmbeddingDim => _embeddingDim;
-
     public float[] GetVector(int tokenId)
     {
-        if (tokenId < 0 || tokenId >= _vocabSize)
+        if (tokenId < 0 || tokenId >= _embeddings.Count)
             return _embeddings[SpikeTokenizer.UnkId];
 
         return _embeddings[tokenId];
@@ -46,7 +51,8 @@ public sealed class SpikeEmbeddingTable
 
     public void SetVector(int tokenId, float[] vector)
     {
-        if (tokenId >= 0 && tokenId < _vocabSize && vector.Length == _embeddingDim)
+        EnsureCapacity(tokenId + 1);
+        if (tokenId >= 0 && vector.Length == _embeddingDim)
         {
             Array.Copy(vector, _embeddings[tokenId], _embeddingDim);
         }
