@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Microsoft.Win32;
 using _103KNN.Studio;
 using NowLib;
@@ -25,6 +26,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _benchCts;
     private bool _isDarkTheme = false;
     private bool _isEnglish = true;
+    private DispatcherTimer? _structureDebounce;
 
     public MainWindow()
     {
@@ -121,18 +123,18 @@ public partial class MainWindow : Window
         CmbArchLibQuid.Content = en ? "LibQuid (Liquid)" : "LibQuid (Líquida)";
         CmbArchNewNow.Content = en ? "NewNow (Dynamic)" : "NewNow (Dinámica)";
         CmbArchNeuro.Content = "103KNN Neuromorphic";
+        CmbArchFastTree.Content = en ? "FastTree (GBDT Tabular)" : "FastTree (GBDT Tabular)";
+        CmbArchFastForest.Content = "FastForest (Random Forest)";
 
         BtnShowNetProps.Content = en ? "Network Props" : "Propiedades Red";
         BtnShowTrainProps.Content = en ? "Training Config" : "Config. Entreno";
-        LblStructure.Text = en ? "Structure (neurons per layer)" : "Estructura (neuronas por capa)";
+        LblStructure.Text = en ? "Structure (neurons per layer — auto-applies)" : "Estructura (neuronas por capa — auto-aplica)";
         LblActivation.Text = en ? "Activation Function" : "Función de Activación";
         LblOptimizer.Text = en ? "Optimizer" : "Optimizador";
         LblStdpRate.Text = en ? "STDP Rate (103KNN Neuromorphic)" : "Tasa STDP (103KNN Neuromorphic)";
 
-        BtnApplyStructure.Content = en ? "Apply Structure" : "Aplicar Estructura";
-        BtnFullConnect.Content = en ? "Full Connectivity" : "Conectividad Completa";
-        BtnBuildNetwork.Content = en ? "Build Network" : "Construir Red";
-        BtnStartTraining.Content = en ? "Go to Training →" : "Ir al Entrenamiento →";
+        BtnFullConnect.Content = en ? "Restore Connections" : "Restaurar Conexiones";
+        BtnStartTraining.Content = en ? "Build & Train →" : "Construir y Entrenar →";
 
         // Entrenador
         LblKpiDataset.Text = "DATASET";
@@ -251,6 +253,8 @@ public partial class MainWindow : Window
         0 => NetworkArchitectureType.Nowral,
         1 => NetworkArchitectureType.LibQuid,
         2 => NetworkArchitectureType.NewNow,
+        4 => NetworkArchitectureType.FastTree,
+        5 => NetworkArchitectureType.FastForest,
         _ => NetworkArchitectureType.Neuromorphic
     };
 
@@ -259,6 +263,8 @@ public partial class MainWindow : Window
         NetworkArchitectureType.Nowral => _isEnglish ? "Nowral (Static)" : "Nowral (Estática)",
         NetworkArchitectureType.LibQuid => _isEnglish ? "LibQuid (Liquid)" : "LibQuid (Líquida)",
         NetworkArchitectureType.NewNow => _isEnglish ? "NewNow (Dynamic)" : "NewNow (Dinámica)",
+        NetworkArchitectureType.FastTree => "FastTree (GBDT)",
+        NetworkArchitectureType.FastForest => "FastForest (RF)",
         _ => "103KNN Neuromorphic"
     };
 
@@ -350,46 +356,39 @@ public partial class MainWindow : Window
         BtnShowNetProps.SetResourceReference(ForegroundProperty, "TextPrimary");
     }
 
-    private void BtnApplyStructure_Click(object sender, RoutedEventArgs e)
+    private void TxtStructure_TextChanged(object sender, TextChangedEventArgs e)
     {
-        SyncSettingsFromUI();
-        var layers = _networkSettings.ParseStructure();
-        if (layers.Count < 2)
+        if (DesignerCanvas == null) return;
+        if (_structureDebounce == null)
         {
-            MessageBox.Show(
-                _isEnglish ? "Define at least 2 layers (e.g., '2 32 8 1')." : "Define al menos 2 capas (ej: '2 32 8 1').",
-                _isEnglish ? "Invalid Structure" : "Estructura inválida",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
+            _structureDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+            _structureDebounce.Tick += (_, _) =>
+            {
+                _structureDebounce.Stop();
+                SyncSettingsFromUI();
+                var layers = _networkSettings.ParseStructure();
+                if (layers.Count >= 2)
+                {
+                    DesignerCanvas.GenerateLayers(layers[0], layers.Skip(1).Take(layers.Count - 2).ToArray(), layers[^1]);
+                    UpdateDatasetLabels();
+                    DesignerLog(_isEnglish ? $"Structure updated: {string.Join("-", layers)}" : $"Estructura actualizada: {string.Join("-", layers)}");
+                }
+            };
         }
-        DesignerCanvas.GenerateLayers(layers[0], layers.Skip(1).Take(layers.Count - 2).ToArray(), layers[^1]);
-        DesignerLog(_isEnglish ? $"Structure applied: {string.Join("-", layers)}" : $"Estructura aplicada: {string.Join("-", layers)}");
+        _structureDebounce.Stop();
+        _structureDebounce.Start();
     }
 
     private void BtnFullConnect_Click(object sender, RoutedEventArgs e)
     {
         DesignerCanvas.MakeFullConnectivity();
-        DesignerLog(_isEnglish ? "Full connectivity restored." : "Conectividad completa restaurada.");
+        DesignerLog(_isEnglish ? "All connections restored." : "Todas las conexiones restauradas.");
     }
 
-    private async void BtnBuildNetwork_Click(object sender, RoutedEventArgs e) => await BuildNetworkWithAnimation();
-
-    public async Task BuildNetworkWithAnimation()
+    public Task BuildNetworkWithAnimation()
     {
-        if (DesignerCanvas.Maps.Count == 0)
-        {
-            MessageBox.Show(_isEnglish ? "No connections defined." : "No hay conexiones definidas.", "Info", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        BuildProgressBar.Value = 0;
-        DesignerLog(_isEnglish ? "Building architecture..." : "Construyendo arquitectura...");
-        for (int i = 0; i <= 100; i += 25)
-        {
-            await Task.Delay(35);
-            BuildProgressBar.Value = i;
-        }
         DesignerLog(_isEnglish ? $"Architecture [{FormatArchName(SelectedArchitecture)}] ready." : $"Arquitectura [{FormatArchName(SelectedArchitecture)}] lista.");
+        return Task.CompletedTask;
     }
 
     private void BtnStartTraining_Click(object sender, RoutedEventArgs e) => OpenTrainerView();
@@ -551,6 +550,11 @@ public partial class MainWindow : Window
 
     private async void BtnRunBenchmark_Click(object sender, RoutedEventArgs e)
     {
+        await ExecuteBenchmarkCoreAsync();
+    }
+
+    private async Task ExecuteBenchmarkCoreAsync()
+    {
         if (DesignerCanvas.Maps.Count == 0)
         {
             MessageBox.Show(_isEnglish ? "Define the network structure first." : "Define la estructura de red primero.", "Info", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -559,7 +563,7 @@ public partial class MainWindow : Window
 
         if (_trainerEngine.RawInputs == null || _trainerEngine.RawTargets == null)
         {
-            BtnBenchSynthetic_Click(sender, e);
+            BtnBenchSynthetic_Click(this, new RoutedEventArgs());
         }
 
         var selectedArchs = new List<NetworkArchitectureType>();
@@ -567,6 +571,8 @@ public partial class MainWindow : Window
         if (ChkBenchLibQuid.IsChecked == true) selectedArchs.Add(NetworkArchitectureType.LibQuid);
         if (ChkBenchNewNow.IsChecked == true) selectedArchs.Add(NetworkArchitectureType.NewNow);
         if (ChkBenchNeuro.IsChecked == true) selectedArchs.Add(NetworkArchitectureType.Neuromorphic);
+        if (ChkBenchFastTree.IsChecked == true) selectedArchs.Add(NetworkArchitectureType.FastTree);
+        if (ChkBenchFastForest.IsChecked == true) selectedArchs.Add(NetworkArchitectureType.FastForest);
 
         if (selectedArchs.Count == 0)
         {
@@ -709,18 +715,102 @@ public partial class MainWindow : Window
         status = "ok",
         networkType = SelectedArchitecture.ToString(),
         hasTrainer = _trainerEngine.Maps.Count > 0,
-        layers = DesignerCanvas.Maps.Count + 1
+        layers = DesignerCanvas.Maps.Count + 1,
+        connections = DesignerCanvas.TotalConnections,
+        samples = _trainerEngine.SampleCount
+    };
+
+    public void SwitchViewByName(string view)
+    {
+        switch (view.ToLowerInvariant())
+        {
+            case "designer":
+                NavDesigner.IsChecked = true;
+                break;
+            case "trainer":
+                NavTrainer.IsChecked = true;
+                break;
+            case "benchmark":
+                NavBenchmark.IsChecked = true;
+                break;
+        }
+    }
+
+    public object LoadRemoteCsv(string path)
+    {
+        EnsureMapsInitialized();
+        _trainerEngine.LoadCsv(path);
+        UpdateTrainerStatusUI();
+        UpdateDatasetLabels();
+        return new { status = "ok", samples = _trainerEngine.SampleCount, path };
+    }
+
+    public object GenerateRemoteSynthetic(int sampleCount)
+    {
+        if (DesignerCanvas.Maps.Count == 0)
+            return new { status = "error", message = "No topology defined" };
+        int inDim = DesignerCanvas.Maps[0].SourceSize;
+        int outDim = DesignerCanvas.Maps[^1].TargetSize;
+        var (inputs, targets) = ModelTrainerEngine.GenerateSyntheticDataset(inDim, outDim, Math.Max(10, sampleCount));
+        _trainerEngine.SetData(inputs, targets);
+        UpdateTrainerStatusUI();
+        UpdateDatasetLabels();
+        return new { status = "ok", samples = _trainerEngine.SampleCount };
+    }
+
+    public async Task<object> RunRemoteBenchmarkAsync(BenchmarkRunRequest req)
+    {
+        var tcs = new TaskCompletionSource<object>();
+        await Dispatcher.InvokeAsync(async () =>
+        {
+            try
+            {
+                NavBenchmark.IsChecked = true;
+                if (req.LearningRate.HasValue)
+                    TxtLearningRate.Text = req.LearningRate.Value.ToString(CultureInfo.InvariantCulture);
+                if (req.BatchSize.HasValue)
+                    TxtBatchSize.Text = req.BatchSize.Value.ToString();
+                TxtBenchEpochs.Text = req.MaxEpochs.ToString();
+                TxtBenchTargetError.Text = req.TargetError.ToString(CultureInfo.InvariantCulture);
+
+                var set = new HashSet<int>(req.Architectures ?? new[] { 0, 1, 2, 3, 4, 5 });
+                ChkBenchNowral.IsChecked = set.Contains(0);
+                ChkBenchLibQuid.IsChecked = set.Contains(1);
+                ChkBenchNewNow.IsChecked = set.Contains(2);
+                ChkBenchNeuro.IsChecked = set.Contains(3);
+                ChkBenchFastTree.IsChecked = set.Contains(4);
+                ChkBenchFastForest.IsChecked = set.Contains(5);
+
+                await ExecuteBenchmarkCoreAsync();
+                tcs.SetResult(GetRemoteBenchmarkResults());
+            }
+            catch (Exception ex)
+            {
+                tcs.SetResult(new { status = "error", message = ex.Message });
+            }
+        });
+        return await tcs.Task;
+    }
+
+    public object GetRemoteBenchmarkResults() => new
+    {
+        status = "ok",
+        topology = LblBenchTopology.Text,
+        samples = _trainerEngine.SampleCount,
+        results = _benchmarkResults.ToArray()
     };
 
     public void ApplyRemoteDesign(int type, int inputs, int[] hidden, int outputs)
     {
-        CmbArchitecture.SelectedIndex = Math.Clamp(type, 0, 3);
-        DesignerCanvas.GenerateLayers(inputs, hidden, outputs);
-        DesignerCanvas.MakeFullConnectivity();
+        CmbArchitecture.SelectedIndex = Math.Clamp(type, 0, 5);
         var list = new List<int> { inputs };
         list.AddRange(hidden);
         list.Add(outputs);
         TxtStructure.Text = string.Join(" ", list);
+        DesignerCanvas.GenerateLayers(inputs, hidden, outputs);
+        DesignerCanvas.MakeFullConnectivity();
+        _trainerEngine.Initialize(SelectedArchitecture, DesignerCanvas.Maps, CreateSelectedActivation(), _trainingSettings);
+        UpdateDatasetLabels();
         DesignerLog($"Remote design applied: {string.Join("-", list)} ({FormatArchName(SelectedArchitecture)}).");
     }
 

@@ -11,6 +11,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.ML" Version="4.0.2" />
+    <PackageReference Include="Microsoft.ML.FastTree" Version="4.0.2" />
     <PackageReference Include="ParquetSharp" Version="21.0.0" />
     <PackageReference Include="TorchSharp" Version="0.105.2" />
     <PackageReference Include="TorchSharp-cpu" Version="0.105.2" />

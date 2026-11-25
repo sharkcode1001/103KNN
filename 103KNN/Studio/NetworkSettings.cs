@@ -10,7 +10,9 @@ public enum NetworkArchitectureType
     Nowral = 0,
     LibQuid = 1,
     NewNow = 2,
-    Neuromorphic = 3
+    Neuromorphic = 3,
+    FastTree = 4,
+    FastForest = 5
 }
 
 public enum OptimizerType

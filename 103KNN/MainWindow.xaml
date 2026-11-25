@@ -221,7 +221,10 @@
                                 <TextBlock x:Name="LblTopologyTitle" Text="Network Topology" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,16,0"/>
                                 <TextBlock x:Name="TxtTopologyStats" Text="Layers: 4  •  Neurons: 43  •  Connections: 328" FontSize="12" Foreground="{DynamicResource AccentPrimary}" VerticalAlignment="Center"/>
                             </StackPanel>
-                            <TextBlock x:Name="LblTopologyHint" Text="Click 2 adjacent neurons to toggle connections" FontSize="11.5" Foreground="{DynamicResource TextMuted}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <TextBlock x:Name="LblTopologyHint" Text="Click 2 adjacent neurons to toggle connections" FontSize="11.5" Foreground="{DynamicResource TextMuted}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                <Button x:Name="BtnFullConnect" Content="Restore Connections" Click="BtnFullConnect_Click" Padding="10,4" FontSize="11.5"/>
+                            </StackPanel>
                         </Grid>
                     </Border>
 
@@ -229,10 +232,7 @@
                         <studio:InteractiveNetCanvas x:Name="DesignerCanvas"/>
                     </Border>
 
-                    <ProgressBar Grid.Row="2" x:Name="BuildProgressBar" Height="6" Minimum="0" Maximum="100" Value="0"
-                                 Background="{DynamicResource BgCard}" Foreground="{DynamicResource AccentPrimary}" BorderThickness="0" Margin="0,0,0,10"/>
-
-                    <Border Grid.Row="3" Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="10" Padding="10">
+                    <Border Grid.Row="2" Grid.RowSpan="2" Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="10" Padding="10">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
@@ -254,6 +254,8 @@
                                 <ComboBoxItem x:Name="CmbArchLibQuid" Content="LibQuid (Liquid)"/>
                                 <ComboBoxItem x:Name="CmbArchNewNow" Content="NewNow (Dynamic)"/>
                                 <ComboBoxItem x:Name="CmbArchNeuro" Content="103KNN Neuromorphic"/>
+                                <ComboBoxItem x:Name="CmbArchFastTree" Content="FastTree (GBDT Tabular)"/>
+                                <ComboBoxItem x:Name="CmbArchFastForest" Content="FastForest (Random Forest)"/>
                             </ComboBox>
 
                             <Grid Margin="0,0,0,14">
@@ -268,8 +270,8 @@
 
                             <Border x:Name="PnlNetProperties" Background="{DynamicResource BgElevated}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,14">
                                 <StackPanel>
-                                    <TextBlock x:Name="LblStructure" Text="Structure (neurons per layer)" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,5"/>
-                                    <TextBox x:Name="TxtStructure" Text="2 32 8 1" Margin="0,0,0,12"/>
+                                    <TextBlock x:Name="LblStructure" Text="Structure (neurons per layer — auto-applies)" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,5"/>
+                                    <TextBox x:Name="TxtStructure" Text="2 32 8 1" Margin="0,0,0,12" TextChanged="TxtStructure_TextChanged"/>
 
                                     <TextBlock x:Name="LblActivation" Text="Activation Function" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,5"/>
                                     <ComboBox x:Name="CmbActivation" SelectedIndex="2">
@@ -300,12 +302,7 @@
                                 </StackPanel>
                             </Border>
 
-                            <Button x:Name="BtnApplyStructure" Content="Apply Structure" Click="BtnApplyStructure_Click" Margin="0,0,0,8"/>
-                            <Button x:Name="BtnFullConnect" Content="Full Connectivity" Click="BtnFullConnect_Click" Margin="0,0,0,10"/>
-                            <Button x:Name="BtnBuildNetwork" Content="Build Network" Click="BtnBuildNetwork_Click" Margin="0,0,0,12"
-                                    BorderBrush="#818CF8"/>
-
-                            <Button x:Name="BtnStartTraining" Content="Go to Training →" Click="BtnStartTraining_Click"
+                            <Button x:Name="BtnStartTraining" Content="Build &amp; Train →" Click="BtnStartTraining_Click"
                                     Foreground="#FFFFFF" BorderThickness="0" Padding="12,11">
                                 <Button.Background>
                                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
@@ -478,7 +475,7 @@
 
                 <Grid Grid.Column="0" Margin="0,0,16,0">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="230"/>
+                        <RowDefinition Height="260"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
@@ -544,7 +541,9 @@
                                     <CheckBox x:Name="ChkBenchNowral" Content="Nowral (Static)" IsChecked="True" Margin="0,0,0,6"/>
                                     <CheckBox x:Name="ChkBenchLibQuid" Content="LibQuid (Liquid)" IsChecked="True" Margin="0,0,0,6"/>
                                     <CheckBox x:Name="ChkBenchNewNow" Content="NewNow (Dynamic)" IsChecked="True" Margin="0,0,0,6"/>
-                                    <CheckBox x:Name="ChkBenchNeuro" Content="103KNN Neuromorphic" IsChecked="True"/>
+                                    <CheckBox x:Name="ChkBenchNeuro" Content="103KNN Neuromorphic" IsChecked="True" Margin="0,0,0,6"/>
+                                    <CheckBox x:Name="ChkBenchFastTree" Content="FastTree (GBDT Tabular)" IsChecked="True" Margin="0,0,0,6"/>
+                                    <CheckBox x:Name="ChkBenchFastForest" Content="FastForest (Random Forest)" IsChecked="True"/>
                                 </StackPanel>
                             </Border>
 

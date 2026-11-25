@@ -29,6 +29,7 @@ public sealed class ModelTrainerEngine : IDisposable
     private LibQuidNetwork? _libQuidNet;
     private NewNowNetwork? _newNowNet;
     private NeuromorphicTrainableNetwork? _neuroNet;
+    private TabularTreeEnsemble? _treeEnsemble;
 
     private torch.optim.Optimizer? _torchOptimizer;
     private CancellationTokenSource? _cts;
@@ -115,6 +116,16 @@ public sealed class ModelTrainerEngine : IDisposable
                     TimeWindow = 1.0f
                 });
                 LastOpsOrSpikes = 0;
+                break;
+
+            case NetworkArchitectureType.FastTree:
+            case NetworkArchitectureType.FastForest:
+                _treeEnsemble = new TabularTreeEnsemble(
+                    Maps[0].SourceSize,
+                    Maps[^1].TargetSize,
+                    isRandomForest: Architecture == NetworkArchitectureType.FastForest,
+                    numberOfTrees: 200);
+                LastOpsOrSpikes = _treeEnsemble.NumberOfTrees * Maps[^1].TargetSize;
                 break;
         }
 
@@ -336,6 +347,12 @@ public sealed class ModelTrainerEngine : IDisposable
                     OnProgressUpdated?.Invoke();
                     break;
 
+                case NetworkArchitectureType.FastTree:
+                case NetworkArchitectureType.FastForest:
+                    if (_treeEnsemble == null) return PredictionResultDto.Fail("Modelo tabular no inicializado.");
+                    pred = _treeEnsemble.Predict(input);
+                    break;
+
                 default:
                     return PredictionResultDto.Fail("Arquitectura desconocida.");
             }
@@ -431,6 +448,15 @@ public sealed class ModelTrainerEngine : IDisposable
         if (Architecture == NetworkArchitectureType.Neuromorphic)
         {
             TrainNeuromorphicLoop(targetError, maxEpochs, token);
+            return;
+        }
+
+        if (Architecture == NetworkArchitectureType.FastTree || Architecture == NetworkArchitectureType.FastForest)
+        {
+            if (_treeEnsemble == null || _normInputs == null || _normTargets == null) return;
+            CurrentEpoch = _treeEnsemble.NumberOfTrees;
+            CurrentMSE = _treeEnsemble.Train(_normInputs, _normTargets, Settings.LearningRate);
+            OnProgressUpdated?.Invoke();
             return;
         }
 
@@ -706,6 +732,8 @@ public sealed class ModelTrainerEngine : IDisposable
         _newNowNet?.Dispose();
         _newNowNet = null;
         _neuroNet = null;
+        _treeEnsemble?.Dispose();
+        _treeEnsemble = null;
     }
 
     public void Dispose()

@@ -53,7 +53,9 @@ public class BenchmarkBarChart : Canvas
         new SolidColorBrush(Color.FromRgb(56, 189, 248)),  // Sky
         new SolidColorBrush(Color.FromRgb(129, 140, 248)), // Indigo
         new SolidColorBrush(Color.FromRgb(246, 177, 122)), // Amber
-        new SolidColorBrush(Color.FromRgb(52, 211, 153))   // Emerald
+        new SolidColorBrush(Color.FromRgb(52, 211, 153)),  // Emerald
+        new SolidColorBrush(Color.FromRgb(244, 114, 182)), // Pink
+        new SolidColorBrush(Color.FromRgb(167, 139, 250))  // Violet
     };
 
     public BenchmarkBarChart()
