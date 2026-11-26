@@ -48,7 +48,7 @@ Tested on a non-linear 8-input, 4-output sinusoidal regression dataset (`240` sa
 - `103KNN.Neuromorphic/` — Core pure-C# neuromorphic engine (`NeuromorphicTrainableNetwork`, `NeuromorphicModelPersistence`, `CognitiveLifNeuron`, `TimeToFirstSpikeEncoder`, `StdpSynapticTrainer`, plus cognitive `Reasoning/`, `Associative/`, and `Text/` modules).
 - `103KNN/` — WPF Studio application (`MainWindow`, `InteractiveNetCanvas`, `TrainingLossChart`, `BenchmarkBarChart`, `ModelTrainerEngine`, `TabularTreeEnsemble`, `NeuralApiServer`).
 - `datasets/` — Sample & public UCI/Kaggle CSV datasets ready for training and 80/20 Train/Test benchmarking (plus `dataset_entrenamiento_ia.txt` for text/knowledge tests).
-- `docs/` — Scientific evaluation papers in [English](docs/PAPER_EN.md) and [Spanish](docs/PAPER_ES.md).
+- `docs/` — User Guides ([English](docs/USER_GUIDE_EN.md) | [Español](docs/USER_GUIDE_ES.md)) and scientific evaluation papers ([English](docs/PAPER_EN.md) | [Español](docs/PAPER_ES.md)).
 - `NowLib/` — Shared topology (`ConnectionMap`) and activation interfaces (`IActivation`).
 - `Nowral/` — Static masked feedforward network (`TorchSharp`).
 - `NewNow/` — Dynamic mini-batch masked network (`TorchSharp`).
@@ -96,6 +96,10 @@ dotnet run --project 103KNN/103KNN.csproj
 ## Quick Start: Using `103KNN.Neuromorphic` from C# Code
 
 `103KNN.Neuromorphic` has zero external dependencies and can be embedded directly into any .NET 10 service, API, or edge application:
+
+```bash
+dotnet add package 103KNN.Neuromorphic
+```
 
 ```csharp
 using _103KNN.Neuromorphic.Training;
