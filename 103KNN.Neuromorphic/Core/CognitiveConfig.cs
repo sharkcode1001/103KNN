@@ -1,6 +1,22 @@
 namespace _103KNN.Neuromorphic.Core;
 
 /// <summary>
+/// Modo de ejecución del motor neuromórfico.
+/// </summary>
+public enum NeuromorphicExecutionMode
+{
+    /// <summary>
+    /// Modo híbrido: combina disparos LIF con propagación de activaciones continuas sub-umbral.
+    /// </summary>
+    Hybrid = 0,
+
+    /// <summary>
+    /// Modo SNN estricto: únicamente las neuronas que superan el umbral LIF propagan espigas.
+    /// </summary>
+    StrictSpiking = 1
+}
+
+/// <summary>
 /// Configuración de hiperparámetros para la dinámica cognitiva neuromórfica.
 /// </summary>
 public sealed class CognitiveConfig
@@ -44,4 +60,9 @@ public sealed class CognitiveConfig
     /// Ventana de tiempo máxima para codificación temporal (TTFS).
     /// </summary>
     public float TimeWindow { get; init; } = 1.0f;
+
+    /// <summary>
+    /// Modo de propagación neuronal (Hybrid por defecto o StrictSpiking).
+    /// </summary>
+    public NeuromorphicExecutionMode ExecutionMode { get; init; } = NeuromorphicExecutionMode.Hybrid;
 }

@@ -153,6 +153,7 @@ public sealed class NeuromorphicTrainableNetwork
         public readonly float[][] LayerSpikeTimes;
         public readonly float[][] NeuronVoltage;
         public readonly float[][] NeuronThreshold;
+        public readonly float[][] NeuronLastTimestamp;
         public readonly bool[][] NeuronFired;
         public readonly Spike[][] SpikeBuffers;
         public readonly float[][] DeltaBuffers;
@@ -172,6 +173,7 @@ public sealed class NeuromorphicTrainableNetwork
             LayerSpikeTimes = new float[count + 1][];
             NeuronVoltage = new float[count][];
             NeuronThreshold = new float[count][];
+            NeuronLastTimestamp = new float[count][];
             NeuronFired = new bool[count][];
             SpikeBuffers = new Spike[count + 1][];
             DeltaBuffers = new float[count + 1][];
@@ -192,6 +194,7 @@ public sealed class NeuromorphicTrainableNetwork
                 LayerSpikeTimes[l + 1] = new float[outD];
                 NeuronVoltage[l] = new float[outD];
                 NeuronThreshold[l] = new float[outD];
+                NeuronLastTimestamp[l] = new float[outD];
                 NeuronFired[l] = new bool[outD];
                 SpikeBuffers[l + 1] = new Spike[outD];
                 DeltaBuffers[l + 1] = new float[outD];
@@ -228,6 +231,7 @@ public sealed class NeuromorphicTrainableNetwork
     public IReadOnlyList<SpikingLayerState> Layers => _layers;
     public IReadOnlyList<NeuromorphicLayerMap> Maps { get; }
     public CognitiveConfig Config => _config;
+    public NeuromorphicExecutionMode ExecutionMode => _config.ExecutionMode;
 
     /// <summary>
     /// Último conteo global de espigas registrado por el motor (espigas TTFS de entrada + disparos LIF ocultos).
@@ -321,6 +325,8 @@ public sealed class NeuromorphicTrainableNetwork
             throw new ArgumentOutOfRangeException(nameof(cfg.EarlyExitConfidenceThreshold), cfg.EarlyExitConfidenceThreshold, "EarlyExitConfidenceThreshold debe ser finito y >= 0.");
         if (!float.IsFinite(cfg.TimeWindow) || cfg.TimeWindow <= 0f)
             throw new ArgumentOutOfRangeException(nameof(cfg.TimeWindow), cfg.TimeWindow, "TimeWindow debe ser finito y mayor que 0.");
+        if (!Enum.IsDefined(cfg.ExecutionMode))
+            throw new ArgumentOutOfRangeException(nameof(cfg.ExecutionMode), cfg.ExecutionMode, "ExecutionMode inválido.");
     }
 
     internal void ExecuteWithReadLock(Action action)
@@ -740,6 +746,14 @@ public sealed class NeuromorphicTrainableNetwork
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static float ComputeTimeDecay(float dt, float decay, float logDecay)
+    {
+        if (decay <= 0f) return 0f;
+        if (decay >= 1f) return 1f;
+        return MathF.Exp(dt * logDecay);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void SortSpikesInline(Spike[] arr, int count)
     {
         for (int i = 1; i < count; i++)
@@ -795,7 +809,11 @@ public sealed class NeuromorphicTrainableNetwork
 
         float baseThresh = _config.BaseThreshold;
         float decay = _config.MembraneDecay;
+        float threshDecay = _config.ThresholdDecay;
         float adaptRate = _config.ThresholdAdaptationRate;
+        float logDecay = decay > 0f ? MathF.Log(decay) : float.NegativeInfinity;
+        float logThreshDecay = threshDecay > 0f ? MathF.Log(threshDecay) : float.NegativeInfinity;
+        bool strictSpiking = _config.ExecutionMode == NeuromorphicExecutionMode.StrictSpiking;
 
         for (int l = 0; l < layerCount; l++)
         {
@@ -809,11 +827,13 @@ public sealed class NeuromorphicTrainableNetwork
             float[] times = scratch.LayerSpikeTimes[l + 1];
             float[] voltages = scratch.NeuronVoltage[l];
             float[] thresholds = scratch.NeuronThreshold[l];
+            float[] lastTimes = scratch.NeuronLastTimestamp[l];
             bool[] fired = scratch.NeuronFired[l];
             float[] wArr = layer.Weights;
 
             Array.Clear(net);
             Array.Clear(voltages);
+            Array.Clear(lastTimes);
             Array.Clear(fired);
             for (int j = 0; j < outDim; j++)
             {
@@ -839,7 +859,15 @@ public sealed class NeuromorphicTrainableNetwork
 
                     if (!isOutputLayer)
                     {
-                        float v = (voltages[j] * decay) + current;
+                        float dt = sp.Timestamp - lastTimes[j];
+                        if (dt > 0f)
+                        {
+                            voltages[j] *= ComputeTimeDecay(dt, decay, logDecay);
+                            thresholds[j] = baseThresh + (thresholds[j] - baseThresh) * ComputeTimeDecay(dt, threshDecay, logThreshDecay);
+                            lastTimes[j] = sp.Timestamp;
+                        }
+
+                        float v = voltages[j] + current;
                         if (v >= thresholds[j])
                         {
                             if (!fired[j])
@@ -873,7 +901,9 @@ public sealed class NeuromorphicTrainableNetwork
                 }
                 else
                 {
-                    float v = (voltages[j] * decay) + layer.Biases[j];
+                    float dtEnd = timeWindow - lastTimes[j];
+                    float endLeak = dtEnd > 0f ? ComputeTimeDecay(dtEnd, decay, logDecay) : 1.0f;
+                    float v = (voltages[j] * endLeak) + layer.Biases[j];
                     if (v >= thresholds[j] && !fired[j])
                     {
                         fired[j] = true;
@@ -886,15 +916,28 @@ public sealed class NeuromorphicTrainableNetwork
                         lifFiredCount++;
                     }
 
-                    float a = fired[j]
-                        ? (z > 0f ? z : 0.1f * z)
-                        : (z > 0f ? 0.25f * z : 0.05f * z);
-                    act[j] = a;
-
-                    if (MathF.Abs(a) > 1e-4f)
+                    if (strictSpiking)
                     {
-                        float t = float.IsPositiveInfinity(times[j]) ? timeWindow : times[j];
-                        nextSpikes[nextSpikeCount++] = new Spike(j, t, MathF.Abs(a), a >= 0 ? 1 : -1);
+                        float a = fired[j] ? (z > 0f ? z : 0.1f * z) : 0.0f;
+                        act[j] = a;
+
+                        if (fired[j] && MathF.Abs(a) > 1e-4f)
+                        {
+                            nextSpikes[nextSpikeCount++] = new Spike(j, times[j], MathF.Abs(a), a >= 0 ? 1 : -1);
+                        }
+                    }
+                    else
+                    {
+                        float a = fired[j]
+                            ? (z > 0f ? z : 0.1f * z)
+                            : (z > 0f ? 0.25f * z : 0.05f * z);
+                        act[j] = a;
+
+                        if (MathF.Abs(a) > 1e-4f)
+                        {
+                            float t = float.IsPositiveInfinity(times[j]) ? timeWindow : times[j];
+                            nextSpikes[nextSpikeCount++] = new Spike(j, t, MathF.Abs(a), a >= 0 ? 1 : -1);
+                        }
                     }
                 }
             }
