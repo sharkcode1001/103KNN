@@ -489,7 +489,7 @@ public sealed class ModelTrainerEngine : IDisposable
                 NewNowPersistence.SaveFullModel(_newNowNet, Maps, basePath);
                 break;
             case NetworkArchitectureType.Neuromorphic when _neuroNet != null:
-                NeuromorphicModelPersistence.Save(_neuroNet, basePath);
+                NeuromorphicModelPersistence.Save(_neuroNet, basePath, _minIn, _maxIn, _minOut, _maxOut);
                 break;
             default:
                 throw new InvalidOperationException("No hay red activa para guardar.");
@@ -533,6 +533,10 @@ public sealed class ModelTrainerEngine : IDisposable
 
             case NetworkArchitectureType.Neuromorphic:
                 _neuroNet = NeuromorphicModelPersistence.Load(basePath);
+                _minIn = _neuroNet.MinIn;
+                _maxIn = _neuroNet.MaxIn;
+                _minOut = _neuroNet.MinOut;
+                _maxOut = _neuroNet.MaxOut;
                 Maps = _neuroNet.Maps.Select(m => new ConnectionMap(m.SourceSize, m.TargetSize)
                 {
                     Connections = m.Connections.Select(c => new ConnectionRecord(c.Source, c.Target)).ToList()

@@ -30,14 +30,28 @@ public static class NeuromorphicModelPersistence
         public int FormatVersion { get; set; } = 1;
         public CognitiveConfig Config { get; set; } = new();
         public List<SerializedLayer> Layers { get; set; } = new();
+        public float[]? MinIn { get; set; }
+        public float[]? MaxIn { get; set; }
+        public float[]? MinOut { get; set; }
+        public float[]? MaxOut { get; set; }
     }
 
-    public static void Save(NeuromorphicTrainableNetwork network, string baseFilePath)
+    public static void Save(
+        NeuromorphicTrainableNetwork network,
+        string baseFilePath,
+        float[]? minIn = null,
+        float[]? maxIn = null,
+        float[]? minOut = null,
+        float[]? maxOut = null)
     {
         var pkg = new NeuromorphicModelPackage
         {
             FormatVersion = FormatVersion,
-            Config = network.Config
+            Config = network.Config,
+            MinIn = minIn ?? network.MinIn,
+            MaxIn = maxIn ?? network.MaxIn,
+            MinOut = minOut ?? network.MinOut,
+            MaxOut = maxOut ?? network.MaxOut
         };
 
         for (int l = 0; l < network.Layers.Count; l++)
@@ -103,6 +117,11 @@ public static class NeuromorphicModelPersistence
             Array.Copy(sl.Biases, layer.Biases, Math.Min(sl.Biases.Length, layer.Biases.Length));
             Array.Copy(sl.Weights, layer.Weights, Math.Min(sl.Weights.Length, layer.Weights.Length));
         }
+
+        network.MinIn = pkg.MinIn;
+        network.MaxIn = pkg.MaxIn;
+        network.MinOut = pkg.MinOut;
+        network.MaxOut = pkg.MaxOut;
 
         return network;
     }

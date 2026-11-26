@@ -5,6 +5,24 @@
     <RootNamespace>_103KNN.Neuromorphic</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
+    <PackageId>103KNN.Neuromorphic</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Erisnel Lora Sugve</Authors>
+    <Company>sharkcode1001</Company>
+    <Copyright>Copyright (c) 2024-2026 Erisnel Lora Sugve</Copyright>
+    <Description>Pure C# SIMD-accelerated Spiking Neural Network (SNN) engine with TTFS encoding, LIF neurons, STDP/Surrogate-Gradient training, sparse event-driven inference, and JSON persistence with embedded Min/Max normalization scales. Zero external dependencies.</Description>
+    <PackageTags>snn;spiking-neural-network;neuromorphic;machine-learning;ai;simd;edge-ai;dotnet</PackageTags>
+    <PackageProjectUrl>https://github.com/sharkcode1001/103KNN</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/sharkcode1001/103KNN</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\LICENSE" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
 </Project>

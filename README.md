@@ -45,9 +45,9 @@ Tested on a non-linear 8-input, 4-output sinusoidal regression dataset (`240` sa
 
 ## Solution Structure
 
-- `103KNN.Neuromorphic/` — Core pure-C# neuromorphic engine (`NeuromorphicTrainableNetwork`, `NeuromorphicModelPersistence`, `CognitiveLifNeuron`, `TimeToFirstSpikeEncoder`, `StdpSynapticTrainer`, `NeuromorphicReasoner`, `NeuromorphicKnnEngine`).
+- `103KNN.Neuromorphic/` — Core pure-C# neuromorphic engine (`NeuromorphicTrainableNetwork`, `NeuromorphicModelPersistence`, `CognitiveLifNeuron`, `TimeToFirstSpikeEncoder`, `StdpSynapticTrainer`, plus cognitive `Reasoning/`, `Associative/`, and `Text/` modules).
 - `103KNN/` — WPF Studio application (`MainWindow`, `InteractiveNetCanvas`, `TrainingLossChart`, `BenchmarkBarChart`, `ModelTrainerEngine`, `TabularTreeEnsemble`, `NeuralApiServer`).
-- `datasets/` — Sample & public UCI/Kaggle CSV datasets ready for training and 80/20 Train/Test benchmarking.
+- `datasets/` — Sample & public UCI/Kaggle CSV datasets ready for training and 80/20 Train/Test benchmarking (plus `dataset_entrenamiento_ia.txt` for text/knowledge tests).
 - `docs/` — Scientific evaluation papers in [English](docs/PAPER_EN.md) and [Spanish](docs/PAPER_ES.md).
 - `NowLib/` — Shared topology (`ConnectionMap`) and activation interfaces (`IActivation`).
 - `Nowral/` — Static masked feedforward network (`TorchSharp`).
@@ -85,10 +85,40 @@ The `datasets/` folder includes 6 ready-to-use `.csv` files for testing both sta
 - **SDK:** [.NET 10 SDK](https://dotnet.microsoft.com/)
 
 ```bash
-git clone https://github.com/<your-username>/103KNN.git
+git clone https://github.com/sharkcode1001/103KNN.git
 cd 103KNN
 dotnet build 103KNN.slnx
 dotnet run --project 103KNN/103KNN.csproj
+```
+
+---
+
+## Quick Start: Using `103KNN.Neuromorphic` from C# Code
+
+`103KNN.Neuromorphic` has zero external dependencies and can be embedded directly into any .NET 10 service, API, or edge application:
+
+```csharp
+using _103KNN.Neuromorphic.Training;
+
+// 1. Define topology (e.g. 8 -> 12 -> 4 -> 1)
+var maps = new List<NeuromorphicLayerMap>
+{
+    new(8, 12),
+    new(12, 4),
+    new(4, 1)
+};
+
+var net = new NeuromorphicTrainableNetwork(maps);
+
+// 2. Train on normalized [0, 1] mini-batches
+float mse = net.TrainStep(batchInputs, batchTargets, learningRate: 0.005f, stdpRate: 0.002f);
+
+// 3. Save model (including Min/Max normalization scales for production)
+NeuromorphicModelPersistence.Save(net, "my_model.json", minIn, maxIn, minOut, maxOut);
+
+// 4. Load in production and run ultra-fast raw inference (~25-40 us)
+var loaded = NeuromorphicModelPersistence.Load("my_model.json");
+float[] prediction = loaded.PredictRaw(rawInputVector);
 ```
 
 ---

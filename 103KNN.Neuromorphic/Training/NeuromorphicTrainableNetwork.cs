@@ -187,6 +187,10 @@ public sealed class NeuromorphicTrainableNetwork
     public IReadOnlyList<NeuromorphicLayerMap> Maps { get; }
     public CognitiveConfig Config => _config;
     public long LastSpikesProcessed { get; private set; }
+    public float[]? MinIn { get; set; }
+    public float[]? MaxIn { get; set; }
+    public float[]? MinOut { get; set; }
+    public float[]? MaxOut { get; set; }
 
     public NeuromorphicTrainableNetwork(
         IReadOnlyList<NeuromorphicLayerMap> maps,
@@ -229,6 +233,33 @@ public sealed class NeuromorphicTrainableNetwork
         long spikes = ForwardFast(input, scratch);
         LastSpikesProcessed = spikes;
         return (float[])scratch.LayerActs[_layers.Count].Clone();
+    }
+
+    /// <summary>
+    /// Predice en escala original aplicando automáticamente los rangos Min/Max guardados en el modelo.
+    /// </summary>
+    public float[] PredictRaw(ReadOnlySpan<float> rawInput)
+    {
+        float[] scaled = rawInput.ToArray();
+        if (MinIn != null && MaxIn != null)
+        {
+            for (int i = 0; i < scaled.Length && i < MinIn.Length; i++)
+            {
+                float range = MaxIn[i] - MinIn[i];
+                scaled[i] = range == 0f ? 0f : (scaled[i] - MinIn[i]) / range;
+            }
+        }
+
+        float[] pred = Predict(scaled);
+        if (MinOut != null && MaxOut != null)
+        {
+            for (int k = 0; k < pred.Length && k < MinOut.Length; k++)
+            {
+                float range = MaxOut[k] - MinOut[k];
+                pred[k] = (pred[k] * range) + MinOut[k];
+            }
+        }
+        return pred;
     }
 
     public float TrainStep(float[][] batchInputs, float[][] batchTargets, float learningRate = 0.005f, float stdpRate = 0.002f)

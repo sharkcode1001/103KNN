@@ -17,7 +17,12 @@ namespace _103KNN.Studio;
 /// </summary>
 public class InteractiveNetCanvas : Canvas
 {
+    private const int MaxDetailedNeurons = 24;
+    private const int MaxDetailedConnections = 600;
+
     private readonly List<Point[]> _nodePositions = new();
+    private readonly List<int> _layerCounts = new();
+    private readonly List<double> _layerX = new();
     public List<ConnectionMap> Maps { get; private set; } = new();
     public event EventHandler? StructureChanged;
 
@@ -53,7 +58,7 @@ public class InteractiveNetCanvas : Canvas
         ? new SolidColorBrush(Color.FromArgb(180, 30, 36, 56))
         : new SolidColorBrush(Color.FromArgb(220, 255, 255, 255));
 
-    public int TotalNeurons => _nodePositions.Sum(l => l.Length);
+    public int TotalNeurons => _layerCounts.Sum();
     public int TotalConnections => Maps.Sum(m => m.Connections.Count);
 
     public InteractiveNetCanvas()
@@ -131,6 +136,8 @@ public class InteractiveNetCanvas : Canvas
     private void CalculatePositions(List<int> layers)
     {
         _nodePositions.Clear();
+        _layerCounts.Clear();
+        _layerX.Clear();
         if (layers.Count == 0) return;
 
         double w = ActualWidth > 40 ? ActualWidth : 740;
@@ -144,76 +151,141 @@ public class InteractiveNetCanvas : Canvas
         for (int l = 0; l < layers.Count; l++)
         {
             int count = layers[l];
+            double x = xStep * (l + 1);
+            _layerCounts.Add(count);
+            _layerX.Add(x);
+
+            if (count > MaxDetailedNeurons)
+            {
+                _nodePositions.Add(Array.Empty<Point>());
+                continue;
+            }
+
             var layerNodes = new Point[count];
             double yStep = usableH / (count + 1.0);
             for (int i = 0; i < count; i++)
             {
-                layerNodes[i] = new Point(xStep * (l + 1), topMargin + yStep * (i + 1));
+                layerNodes[i] = new Point(x, topMargin + yStep * (i + 1));
             }
             _nodePositions.Add(layerNodes);
         }
+    }
+
+    private Point[] GetConnectionAnchors(int layerIndex, double topMargin, double usableH)
+    {
+        if (_nodePositions[layerIndex].Length > 0)
+            return _nodePositions[layerIndex];
+
+        const int anchorCount = 5;
+        double x = _layerX[layerIndex];
+        double blockH = Math.Min(usableH, 160);
+        double blockTop = topMargin + (usableH - blockH) * 0.5;
+        double step = blockH / (anchorCount + 1.0);
+
+        var anchors = new Point[anchorCount];
+        for (int i = 0; i < anchorCount; i++)
+        {
+            anchors[i] = new Point(x, blockTop + step * (i + 1));
+        }
+        return anchors;
+    }
+
+    private void DrawBezierConnection(Point p1, Point p2, bool isHighlighted)
+    {
+        double midX = (p1.X + p2.X) * 0.5;
+        var geometry = new PathGeometry();
+        var figure = new PathFigure { StartPoint = p1 };
+        figure.Segments.Add(new BezierSegment(
+            new Point(midX, p1.Y),
+            new Point(midX, p2.Y),
+            p2,
+            true));
+        geometry.Figures.Add(figure);
+
+        var path = new Path
+        {
+            Data = geometry,
+            Stroke = isHighlighted ? ConnectionHighlight : ConnectionNormal,
+            StrokeThickness = isHighlighted ? 1.8 : 0.95,
+            IsHitTestVisible = false
+        };
+        Children.Add(path);
     }
 
     public void Redraw()
     {
         Children.Clear();
         DrawSubtleGrid();
-        if (_nodePositions.Count == 0) return;
+        if (_layerCounts.Count == 0) return;
+
+        double h = ActualHeight > 40 ? ActualHeight : 380;
+        const double topMargin = 38;
+        const double bottomMargin = 20;
+        double usableH = Math.Max(60, h - topMargin - bottomMargin);
 
         var activeNode = _selectedNode ?? _hoveredNode;
 
-        // 1. Conexiones (curvas Bézier suaves)
+        // 1. Conexiones (curvas Bézier suaves o haz resumido para capas masivas)
         for (int mIdx = 0; mIdx < Maps.Count; mIdx++)
         {
-            if (mIdx + 1 >= _nodePositions.Count) continue;
+            if (mIdx + 1 >= _layerCounts.Count) continue;
             var map = Maps[mIdx];
+            int srcCount = _layerCounts[mIdx];
+            int dstCount = _layerCounts[mIdx + 1];
 
-            foreach (var c in map.Connections)
+            bool drawDetailed = srcCount <= MaxDetailedNeurons &&
+                                dstCount <= MaxDetailedNeurons &&
+                                map.Connections.Count <= MaxDetailedConnections;
+
+            if (drawDetailed)
             {
-                if (c.Source >= _nodePositions[mIdx].Length || c.Target >= _nodePositions[mIdx + 1].Length)
-                    continue;
-
-                var p1 = _nodePositions[mIdx][c.Source];
-                var p2 = _nodePositions[mIdx + 1][c.Target];
-
-                bool isHighlighted = activeNode.HasValue &&
-                    ((activeNode.Value.layer == mIdx && activeNode.Value.index == c.Source) ||
-                     (activeNode.Value.layer == mIdx + 1 && activeNode.Value.index == c.Target));
-
-                double midX = (p1.X + p2.X) * 0.5;
-                var geometry = new PathGeometry();
-                var figure = new PathFigure { StartPoint = p1 };
-                figure.Segments.Add(new BezierSegment(
-                    new Point(midX, p1.Y),
-                    new Point(midX, p2.Y),
-                    p2,
-                    true));
-                geometry.Figures.Add(figure);
-
-                var path = new Path
+                foreach (var c in map.Connections)
                 {
-                    Data = geometry,
-                    Stroke = isHighlighted ? ConnectionHighlight : ConnectionNormal,
-                    StrokeThickness = isHighlighted ? 1.8 : 0.95,
-                    IsHitTestVisible = false
-                };
-                Children.Add(path);
+                    if (c.Source >= _nodePositions[mIdx].Length || c.Target >= _nodePositions[mIdx + 1].Length)
+                        continue;
+
+                    var p1 = _nodePositions[mIdx][c.Source];
+                    var p2 = _nodePositions[mIdx + 1][c.Target];
+
+                    bool isHighlighted = activeNode.HasValue &&
+                        ((activeNode.Value.layer == mIdx && activeNode.Value.index == c.Source) ||
+                         (activeNode.Value.layer == mIdx + 1 && activeNode.Value.index == c.Target));
+
+                    DrawBezierConnection(p1, p2, isHighlighted);
+                }
+            }
+            else if (map.Connections.Count > 0)
+            {
+                var srcAnchors = GetConnectionAnchors(mIdx, topMargin, usableH);
+                var dstAnchors = GetConnectionAnchors(mIdx + 1, topMargin, usableH);
+
+                int srcStep = Math.Max(1, (int)Math.Ceiling(srcAnchors.Length / 5.0));
+                int dstStep = Math.Max(1, (int)Math.Ceiling(dstAnchors.Length / 5.0));
+
+                for (int i = 0; i < srcAnchors.Length; i += srcStep)
+                {
+                    for (int j = 0; j < dstAnchors.Length; j += dstStep)
+                    {
+                        DrawBezierConnection(srcAnchors[i], dstAnchors[j], false);
+                    }
+                }
             }
         }
 
-        // 2. Capas y neuronas
-        for (int l = 0; l < _nodePositions.Count; l++)
+        // 2. Capas y neuronas (o tarjeta resumen cuando supera MaxDetailedNeurons)
+        for (int l = 0; l < _layerCounts.Count; l++)
         {
-            int count = _nodePositions[l].Length;
+            int count = _layerCounts[l];
+            double layerX = _layerX[l];
             double radius = count > 24 ? 4.5 : count > 12 ? 6.5 : 8.5;
             double diameter = radius * 2;
 
             Brush accent = l == 0 ? InputColor
-                : l == _nodePositions.Count - 1 ? OutputColor
+                : l == _layerCounts.Count - 1 ? OutputColor
                 : HiddenColor;
 
             string layerName = l == 0 ? (_isEnglish ? $"Input ({count})" : $"Entrada ({count})")
-                : l == _nodePositions.Count - 1 ? (_isEnglish ? $"Output ({count})" : $"Salida ({count})")
+                : l == _layerCounts.Count - 1 ? (_isEnglish ? $"Output ({count})" : $"Salida ({count})")
                 : (_isEnglish ? $"Hidden {l} ({count})" : $"Oculta {l} ({count})");
 
             var badge = new Border
@@ -232,9 +304,56 @@ public class InteractiveNetCanvas : Canvas
                     FontWeight = FontWeights.SemiBold
                 }
             };
-            SetLeft(badge, _nodePositions[l][0].X - 36);
+            SetLeft(badge, layerX - 36);
             SetTop(badge, 8);
             Children.Add(badge);
+
+            if (count > MaxDetailedNeurons)
+            {
+                const double blockW = 64;
+                double blockH = Math.Min(usableH, 160);
+                double blockTop = topMargin + (usableH - blockH) * 0.5;
+
+                var summaryCard = new Border
+                {
+                    Width = blockW,
+                    Height = blockH,
+                    Background = PillBgBrush,
+                    BorderBrush = accent,
+                    BorderThickness = new Thickness(1.8),
+                    CornerRadius = new CornerRadius(12),
+                    IsHitTestVisible = false,
+                    Child = new StackPanel
+                    {
+                        VerticalAlignment = VerticalAlignment.Center,
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        Children =
+                        {
+                            new TextBlock
+                            {
+                                Text = count.ToString("N0"),
+                                Foreground = accent,
+                                FontSize = 15,
+                                FontWeight = FontWeights.Bold,
+                                HorizontalAlignment = HorizontalAlignment.Center
+                            },
+                            new TextBlock
+                            {
+                                Text = _isEnglish ? "neurons" : "neuronas",
+                                Foreground = LabelTextBrush,
+                                FontSize = 9.5,
+                                FontWeight = FontWeights.SemiBold,
+                                HorizontalAlignment = HorizontalAlignment.Center,
+                                Margin = new Thickness(0, 2, 0, 0)
+                            }
+                        }
+                    }
+                };
+                SetLeft(summaryCard, layerX - blockW * 0.5);
+                SetTop(summaryCard, blockTop);
+                Children.Add(summaryCard);
+                continue;
+            }
 
             for (int i = 0; i < count; i++)
             {
