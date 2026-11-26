@@ -6,6 +6,13 @@ namespace _103KNN.Neuromorphic.Neurons;
 /// Neurona Leaky Integrate-and-Fire adaptada para procesamiento cognitivo y razonamiento secuencial.
 /// Incluye adaptación de umbral homeostática, inhibición lateral y registro de primer tiempo de disparo (TTFS).
 /// </summary>
+/// <remarks>
+/// Esta clase constituye el modelo neuronal orientado a objetos utilizado por capas y componentes cognitivos
+/// como <see cref="Layers.SpikeSynapticLayer"/> y <see cref="Reasoning.NeuromorphicReasoner"/> (con soporte de
+/// inhibición lateral y <see cref="Step"/> discreto). El motor tabular entrenable
+/// <see cref="Training.NeuromorphicTrainableNetwork"/> implementa su propio camino rápido equivalente sobre
+/// arreglos planos 1D en <c>ForwardFast</c> sin invocar esta clase en tiempo de inferencia o entrenamiento.
+/// </remarks>
 public sealed class CognitiveLifNeuron
 {
     private readonly int _neuronId;
