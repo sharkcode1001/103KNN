@@ -327,6 +327,10 @@ public sealed class NeuromorphicTrainableNetwork
             throw new ArgumentOutOfRangeException(nameof(cfg.TimeWindow), cfg.TimeWindow, "TimeWindow debe ser finito y mayor que 0.");
         if (!Enum.IsDefined(cfg.ExecutionMode))
             throw new ArgumentOutOfRangeException(nameof(cfg.ExecutionMode), cfg.ExecutionMode, "ExecutionMode inválido.");
+        if (!Enum.IsDefined(cfg.EncodingMode))
+            throw new ArgumentOutOfRangeException(nameof(cfg.EncodingMode), cfg.EncodingMode, "EncodingMode inválido.");
+        if (!float.IsFinite(cfg.GlobalEncodingScale) || cfg.GlobalEncodingScale <= 0f)
+            throw new ArgumentOutOfRangeException(nameof(cfg.GlobalEncodingScale), cfg.GlobalEncodingScale, "GlobalEncodingScale debe ser finito y mayor que 0.");
     }
 
     internal void ExecuteWithReadLock(Action action)
@@ -718,6 +722,8 @@ public sealed class NeuromorphicTrainableNetwork
                             float dt = tPost - prevTimes[i];
                             if (dt > 0f)
                                 g *= 1.0f + stdpRate * MathF.Exp(-dt / 0.25f);
+                            else if (dt < 0f && _config.EnableStdpDepression)
+                                g *= MathF.Max(0.1f, 1.0f - stdpRate * 0.5f * MathF.Exp(dt / 0.25f));
                         }
 
                         gw[idx] += g;
@@ -778,13 +784,17 @@ public sealed class NeuromorphicTrainableNetwork
         float[] inputTimes = scratch.LayerSpikeTimes[0];
         Spike[] spikeBuf0 = scratch.SpikeBuffers[0];
 
-        float maxVal = 0.00001f;
+        bool useGlobalScale = _config.EncodingMode == TimeToFirstSpikeMode.GlobalScale;
+        float maxVal = useGlobalScale ? _config.GlobalEncodingScale : 0.00001f;
         for (int i = 0; i < input.Length; i++)
         {
             float v = input[i];
             inputBuf[i] = v;
-            float abs = MathF.Abs(v);
-            if (abs > maxVal) maxVal = abs;
+            if (!useGlobalScale)
+            {
+                float abs = MathF.Abs(v);
+                if (abs > maxVal) maxVal = abs;
+            }
         }
 
         int currentSpikeCount = 0;
@@ -792,7 +802,7 @@ public sealed class NeuromorphicTrainableNetwork
         for (int i = 0; i < input.Length; i++)
         {
             float val = inputBuf[i];
-            float normalized = MathF.Abs(val) / maxVal;
+            float normalized = Math.Clamp(MathF.Abs(val) / maxVal, 0f, 1f);
             float t = timeWindow * (1.0f - normalized);
             inputTimes[i] = t;
             spikeBuf0[currentSpikeCount++] = new Spike(i, t, normalized, val >= 0 ? 1 : -1);

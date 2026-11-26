@@ -17,6 +17,22 @@ public enum NeuromorphicExecutionMode
 }
 
 /// <summary>
+/// Modo de normalización temporal para el codificador Time-To-First-Spike (TTFS).
+/// </summary>
+public enum TimeToFirstSpikeMode
+{
+    /// <summary>
+    /// Normaliza por el máximo absoluto de cada muestra individual.
+    /// </summary>
+    PerSampleRelative = 0,
+
+    /// <summary>
+    /// Normaliza usando una escala global fija (<see cref="CognitiveConfig.GlobalEncodingScale"/>).
+    /// </summary>
+    GlobalScale = 1
+}
+
+/// <summary>
 /// Configuración de hiperparámetros para la dinámica cognitiva neuromórfica.
 /// </summary>
 public sealed class CognitiveConfig
@@ -65,4 +81,19 @@ public sealed class CognitiveConfig
     /// Modo de propagación neuronal (Hybrid por defecto o StrictSpiking).
     /// </summary>
     public NeuromorphicExecutionMode ExecutionMode { get; init; } = NeuromorphicExecutionMode.Hybrid;
+
+    /// <summary>
+    /// Modo de codificación TTFS (relativo por muestra o escala global).
+    /// </summary>
+    public TimeToFirstSpikeMode EncodingMode { get; init; } = TimeToFirstSpikeMode.PerSampleRelative;
+
+    /// <summary>
+    /// Escala global utilizada cuando <see cref="EncodingMode"/> es <see cref="TimeToFirstSpikeMode.GlobalScale"/>.
+    /// </summary>
+    public float GlobalEncodingScale { get; init; } = 1.0f;
+
+    /// <summary>
+    /// Habilita depresión sináptica (LTD) en la modulación STDP cuando <c>dt &lt; 0</c>.
+    /// </summary>
+    public bool EnableStdpDepression { get; init; } = false;
 }

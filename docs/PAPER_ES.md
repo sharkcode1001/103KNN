@@ -29,7 +29,7 @@ Este estudio compara **103KNN Neuromorphic** frente a ambos mundos (redes neuron
 3. **`LibQuid` (Líquida ODE, `TorchSharp`):** Celda ODE con constante de tiempo aprendible $\tau$, integración de Euler ($\Delta t = 0.1$) y ventana temporal $W = 5$.
 4. **`FastTree` (GBDT Tabular, `Microsoft.ML.FastTree`):** Ensamble de $200$ árboles de regresión potenciados por gradiente por cada variable de salida.
 5. **`FastForest` (Random Forest, `Microsoft.ML.FastTree`):** Ensamble de $200$ árboles aleatorios de regresión por cada variable de salida.
-6. **`103KNN Neuromorphic` (SNN Nativa en C#):** Motor orientado a eventos con codificación TTFS, neuronas LIF, adyacencia dispersa (`ConnectedTargets`) y entrenamiento paralelo (`Parallel.For` + `ThreadScratch`):
+6. **`103KNN Neuromorphic` (SNN Nativa en C#):** Motor orientado a eventos con codificación TTFS (`PerSampleRelative` o `GlobalScale`), neuronas LIF con decaimiento exponencial dependiente de $\Delta t$, modos `Hybrid` (predeterminado en regresión tabular) y `StrictSpiking`, adyacencia dispersa (`ConnectedTargets`) y modulación causal inspirada en STDP (LTP cuando $\Delta t > 0$ y LTD opcional cuando $\Delta t < 0$) sobre *Surrogate-Gradient + Adam* (`Parallel.For` + `ThreadScratch`):
 7. **`Standard MLP` (`TorchSharp`):** Perceptrón multicapa denso estándar en PyTorch/TorchSharp sin máscara dispersa, entrenado con mini-lotes (`BatchSize = 64`) y optimizador `Adam`.
 8. **`ResNet-Tabular` (`TorchSharp`):** Arquitectura residual tabular con conexiones *skip* y bloques densos en PyTorch/TorchSharp. *(El Studio incluye además `LSTM` para secuencias).*
 

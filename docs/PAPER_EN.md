@@ -29,7 +29,7 @@ This study evaluates **103KNN Neuromorphic** against both neural (`TorchSharp`) 
 3. **`LibQuid` (Liquid ODE, `TorchSharp`):** Liquid time-constant cell with learnable $\tau$, Euler integration ($\Delta t = 0.1$), and a $W=5$ sliding temporal window.
 4. **`FastTree` (Tabular GBDT, `Microsoft.ML.FastTree`):** Ensemble of $200$ gradient-boosted regression trees per output target.
 5. **`FastForest` (Random Forest, `Microsoft.ML.FastTree`):** Ensemble of $200$ random forest regression trees per output target.
-6. **`103KNN Neuromorphic` (Native C# SNN):** Event-driven engine with TTFS encoding, LIF neurons, sparse adjacency (`ConnectedTargets`), and parallel batch processing (`Parallel.For` + `ThreadScratch`):
+6. **`103KNN Neuromorphic` (Native C# SNN):** Event-driven engine with TTFS encoding (`PerSampleRelative` or `GlobalScale`), $\Delta t$-dependent exponential LIF decay, selectable `Hybrid` (default for tabular regression) and `StrictSpiking` modes, sparse adjacency (`ConnectedTargets`), and STDP-inspired causal gradient modulation (LTP for $\Delta t > 0$ and optional LTD for $\Delta t < 0$) with *Surrogate-Gradient + Adam* (`Parallel.For` + `ThreadScratch`):
 7. **`Standard MLP` (`TorchSharp`):** Standard dense PyTorch/TorchSharp multilayer perceptron trained with shuffled mini-batches (`BatchSize = 64`) and `Adam`.
 8. **`ResNet-Tabular` (`TorchSharp`):** Residual tabular network with skip connections and dense blocks in PyTorch/TorchSharp. *(The Studio also supports `LSTM` for sequential tasks).*
 
