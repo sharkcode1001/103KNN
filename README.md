@@ -127,6 +127,21 @@ float[] prediction = loaded.PredictRaw(rawInputVector);
 
 ---
 
+## Potential Use Cases & Target Environments
+
+Because `103KNN.Neuromorphic` compiles to **~87 KB** with **zero external dependencies** and achieves **15–60 µs single-sample inference** on CPU, it is especially suited for:
+
+- **Edge & Industrial IoT:** Predictive maintenance, vibration/temperature anomaly detection, and sensor fusion on industrial PCs, gateways, and ARM/Raspberry Pi boards running .NET without Python or `libtorch`.
+- **Real-Time Control & Robotics:** Fast closed-loop inference where deterministic microsecond latency and sparse spike computation matter more than heavy GPU batch throughput.
+- **High-Frequency Telemetry & Local Services:** Embedded scoring inside ASP.NET Core / gRPC / desktop microservices without shipping 240+ MB of native ML runtimes.
+- **Game AI & Simulation (Unity / Godot C#):** Lightweight adaptive agents with low per-frame CPU overhead.
+- **Combinatorial & Non-Linear Signal Processing:** Tasks with complex feature interactions where orthogonal decision trees struggle.
+
+### Share Your Use Case or Feedback
+Have an idea, benchmark, or real-world application using `103KNN.Neuromorphic`? Open an issue or discussion in the [GitHub Repository](https://github.com/sharkcode1001/103KNN/issues) — community feedback and new use-case proposals are very welcome!
+
+---
+
 ## Licensing
 
 `103KNN` and `103KNN.Neuromorphic` are released under a **Dual-Licensing Model** (see [LICENSE](LICENSE) and [LICENSING.md](LICENSING.md)):
