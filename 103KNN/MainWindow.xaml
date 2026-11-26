@@ -256,6 +256,9 @@
                                 <ComboBoxItem x:Name="CmbArchNeuro" Content="103KNN Neuromorphic"/>
                                 <ComboBoxItem x:Name="CmbArchFastTree" Content="FastTree (GBDT Tabular)"/>
                                 <ComboBoxItem x:Name="CmbArchFastForest" Content="FastForest (Random Forest)"/>
+                                <ComboBoxItem x:Name="CmbArchStdMlp" Content="Standard MLP (PyTorch)"/>
+                                <ComboBoxItem x:Name="CmbArchResNet" Content="ResNet-Tabular (Skip)"/>
+                                <ComboBoxItem x:Name="CmbArchLstm" Content="LSTM (Recurrent)"/>
                             </ComboBox>
 
                             <Grid Margin="0,0,0,14">
@@ -516,8 +519,9 @@
                                     </Style>
                                 </DataGrid.ColumnHeaderStyle>
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn x:Name="ColBenchArch" Header="Architecture" Binding="{Binding Architecture}" Width="1.4*"/>
-                                    <DataGridTextColumn x:Name="ColBenchMse" Header="Final MSE" Binding="{Binding FinalMseDisplay}" Width="*"/>
+                                    <DataGridTextColumn x:Name="ColBenchArch" Header="Architecture" Binding="{Binding Architecture}" Width="1.3*"/>
+                                    <DataGridTextColumn x:Name="ColBenchMse" Header="Train MSE" Binding="{Binding FinalMseDisplay}" Width="*"/>
+                                    <DataGridTextColumn x:Name="ColBenchTestMse" Header="Test MSE" Binding="{Binding TestMseDisplay}" Width="*"/>
                                     <DataGridTextColumn x:Name="ColBenchEpochs" Header="Epochs" Binding="{Binding EpochsRun}" Width="0.7*"/>
                                     <DataGridTextColumn x:Name="ColBenchTime" Header="Total Time" Binding="{Binding TotalMsDisplay}" Width="*"/>
                                     <DataGridTextColumn x:Name="ColBenchMsEpoch" Header="ms / Epoch" Binding="{Binding MsPerEpochDisplay}" Width="*"/>
@@ -543,7 +547,10 @@
                                     <CheckBox x:Name="ChkBenchNewNow" Content="NewNow (Dynamic)" IsChecked="True" Margin="0,0,0,6"/>
                                     <CheckBox x:Name="ChkBenchNeuro" Content="103KNN Neuromorphic" IsChecked="True" Margin="0,0,0,6"/>
                                     <CheckBox x:Name="ChkBenchFastTree" Content="FastTree (GBDT Tabular)" IsChecked="True" Margin="0,0,0,6"/>
-                                    <CheckBox x:Name="ChkBenchFastForest" Content="FastForest (Random Forest)" IsChecked="True"/>
+                                    <CheckBox x:Name="ChkBenchFastForest" Content="FastForest (Random Forest)" IsChecked="True" Margin="0,0,0,6"/>
+                                    <CheckBox x:Name="ChkBenchStdMlp" Content="Standard MLP (PyTorch)" IsChecked="True" Margin="0,0,0,6"/>
+                                    <CheckBox x:Name="ChkBenchResNet" Content="ResNet-Tabular (Skip)" IsChecked="True" Margin="0,0,0,6"/>
+                                    <CheckBox x:Name="ChkBenchLstm" Content="LSTM (Recurrent)" IsChecked="False"/>
                                 </StackPanel>
                             </Border>
 
@@ -571,7 +578,9 @@
                                     <TextBox x:Name="TxtBenchEpochs" Text="40" Margin="0,0,0,10"/>
 
                                     <TextBlock x:Name="LblBenchTargetMse" Text="Target Error (MSE)" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4"/>
-                                    <TextBox x:Name="TxtBenchTargetError" Text="0.0001"/>
+                                    <TextBox x:Name="TxtBenchTargetError" Text="0.0001" Margin="0,0,0,10"/>
+
+                                    <CheckBox x:Name="ChkBenchTrainTestSplit" Content="80/20 Train/Test Split (Generalization)" IsChecked="True"/>
                                 </StackPanel>
                             </Border>
 

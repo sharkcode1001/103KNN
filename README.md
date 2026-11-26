@@ -46,8 +46,9 @@ Tested on a non-linear 8-input, 4-output sinusoidal regression dataset (`240` sa
 ## Solution Structure
 
 - `103KNN.Neuromorphic/` — Core pure-C# neuromorphic engine (`NeuromorphicTrainableNetwork`, `NeuromorphicModelPersistence`, `CognitiveLifNeuron`, `TimeToFirstSpikeEncoder`, `StdpSynapticTrainer`, `NeuromorphicReasoner`, `NeuromorphicKnnEngine`).
-- `103KNN/` — WPF Studio application (`MainWindow`, `InteractiveNetCanvas`, `TrainingLossChart`, `BenchmarkBarChart`, `ModelTrainerEngine`, `NeuralApiServer`).
-- `datasets/` — Sample CSV datasets ready for training and benchmarking.
+- `103KNN/` — WPF Studio application (`MainWindow`, `InteractiveNetCanvas`, `TrainingLossChart`, `BenchmarkBarChart`, `ModelTrainerEngine`, `TabularTreeEnsemble`, `NeuralApiServer`).
+- `datasets/` — Sample & public UCI/Kaggle CSV datasets ready for training and 80/20 Train/Test benchmarking.
+- `docs/` — Scientific evaluation papers in [English](docs/PAPER_EN.md) and [Spanish](docs/PAPER_ES.md).
 - `NowLib/` — Shared topology (`ConnectionMap`) and activation interfaces (`IActivation`).
 - `Nowral/` — Static masked feedforward network (`TorchSharp`).
 - `NewNow/` — Dynamic mini-batch masked network (`TorchSharp`).

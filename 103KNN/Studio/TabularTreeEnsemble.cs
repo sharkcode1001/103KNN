@@ -31,7 +31,7 @@ public sealed class TabularTreeEnsemble : IDisposable
     private readonly List<ITransformer> _models = new();
     private readonly List<PredictionEngine<TabularInputRow, TabularScoreOutput>> _engines = new();
 
-    public int NumberOfTrees { get; }
+    public int NumberOfTrees { get; set; }
 
     public TabularTreeEnsemble(int inputDim, int outputDim, bool isRandomForest, int numberOfTrees = 200)
     {

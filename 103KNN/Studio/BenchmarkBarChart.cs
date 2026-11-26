@@ -12,6 +12,7 @@ public sealed class BenchmarkResultItem
 {
     public string Architecture { get; set; } = "";
     public float FinalMse { get; set; }
+    public float? TestMse { get; set; }
     public long EpochsRun { get; set; }
     public double TotalMs { get; set; }
     public double MsPerEpoch { get; set; }
@@ -20,6 +21,7 @@ public sealed class BenchmarkResultItem
     public string Status { get; set; } = "";
 
     public string FinalMseDisplay => $"{FinalMse:F6}";
+    public string TestMseDisplay => TestMse.HasValue ? $"{TestMse.Value:F6}" : "-";
     public string TotalMsDisplay => $"{TotalMs:F1} ms";
     public string MsPerEpochDisplay => $"{MsPerEpoch:F2} ms";
     public string InferenceDisplay => $"{InferenceUsPerSample:F1} µs";
@@ -55,7 +57,10 @@ public class BenchmarkBarChart : Canvas
         new SolidColorBrush(Color.FromRgb(246, 177, 122)), // Amber
         new SolidColorBrush(Color.FromRgb(52, 211, 153)),  // Emerald
         new SolidColorBrush(Color.FromRgb(244, 114, 182)), // Pink
-        new SolidColorBrush(Color.FromRgb(167, 139, 250))  // Violet
+        new SolidColorBrush(Color.FromRgb(167, 139, 250)), // Violet
+        new SolidColorBrush(Color.FromRgb(45, 212, 191)),  // Teal
+        new SolidColorBrush(Color.FromRgb(251, 146, 60)),  // Orange
+        new SolidColorBrush(Color.FromRgb(96, 165, 250))   // Blue
     };
 
     public BenchmarkBarChart()

@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using _103KNN.Neuromorphic.Core;
-using _103KNN.Neuromorphic.Encoding;
 using _103KNN.Neuromorphic.Neurons;
 
 namespace _103KNN.Neuromorphic.Training;
@@ -40,7 +40,7 @@ public sealed class NeuromorphicLayerMap
 /// <summary>
 /// Red Neuronal Neuromórfica Entrenable (SNN) basada en neuronas LIF, codificación TTFS,
 /// propagación orientada a eventos (espigas) y aprendizaje híbrido Surrogate-Gradient + R-STDP.
-/// Optimizada para CPU mediante adyacencia dispersa y paralelización por mini-lotes.
+/// Optimizada para CPU con arreglos planos 1D, SIMD (Vector&lt;float&gt;), ordenamiento inline y paralelismo por lotes.
 /// </summary>
 public sealed class NeuromorphicTrainableNetwork
 {
@@ -48,12 +48,13 @@ public sealed class NeuromorphicTrainableNetwork
     {
         public int InputDim { get; }
         public int OutputDim { get; }
-        public bool[,] Mask { get; }
+        public bool IsFullyConnected { get; }
+        public bool[] Mask { get; }
         public int[][] ConnectedTargets { get; }
-        public float[,] Weights { get; }
+        public float[] Weights { get; }
         public float[] Biases { get; }
-        public float[,] AdamM { get; }
-        public float[,] AdamV { get; }
+        public float[] AdamM { get; }
+        public float[] AdamV { get; }
         public float[] BiasM { get; }
         public float[] BiasV { get; }
         public CognitiveLifNeuron[] Neurons { get; }
@@ -62,11 +63,12 @@ public sealed class NeuromorphicTrainableNetwork
         {
             InputDim = map.SourceSize;
             OutputDim = map.TargetSize;
-            Mask = new bool[OutputDim, InputDim];
-            Weights = new float[OutputDim, InputDim];
+            int total = OutputDim * InputDim;
+            Mask = new bool[total];
+            Weights = new float[total];
             Biases = new float[OutputDim];
-            AdamM = new float[OutputDim, InputDim];
-            AdamV = new float[OutputDim, InputDim];
+            AdamM = new float[total];
+            AdamV = new float[total];
             BiasM = new float[OutputDim];
             BiasV = new float[OutputDim];
             Neurons = new CognitiveLifNeuron[OutputDim];
@@ -74,28 +76,37 @@ public sealed class NeuromorphicTrainableNetwork
             var perSource = new List<int>[InputDim];
             for (int i = 0; i < InputDim; i++) perSource[i] = new List<int>();
 
+            int activeCount = 0;
             foreach (var (src, dst) in map.Connections)
             {
-                if (src >= 0 && src < InputDim && dst >= 0 && dst < OutputDim && !Mask[dst, src])
+                if (src >= 0 && src < InputDim && dst >= 0 && dst < OutputDim)
                 {
-                    Mask[dst, src] = true;
-                    perSource[src].Add(dst);
+                    int idx = dst * InputDim + src;
+                    if (!Mask[idx])
+                    {
+                        Mask[idx] = true;
+                        perSource[src].Add(dst);
+                        activeCount++;
+                    }
                 }
             }
 
+            IsFullyConnected = activeCount == total;
             ConnectedTargets = new int[InputDim][];
             for (int i = 0; i < InputDim; i++)
                 ConnectedTargets[i] = perSource[i].ToArray();
 
-            float stdDev = MathF.Sqrt(2.0f / Math.Max(1, InputDim + OutputDim)) * 1.4f;
+            float stdDev = MathF.Sqrt(2.0f / Math.Max(1, InputDim));
             for (int j = 0; j < OutputDim; j++)
             {
                 Neurons[j] = new CognitiveLifNeuron(j, config);
+                int rowOffset = j * InputDim;
                 for (int i = 0; i < InputDim; i++)
                 {
-                    if (Mask[j, i])
+                    int idx = rowOffset + i;
+                    if (Mask[idx])
                     {
-                        Weights[j, i] = (float)((rng.NextDouble() * 2.0 - 1.0) * stdDev);
+                        Weights[idx] = (float)((rng.NextDouble() * 2.0 - 1.0) * stdDev);
                     }
                 }
             }
@@ -104,7 +115,7 @@ public sealed class NeuromorphicTrainableNetwork
 
     private sealed class ThreadScratch
     {
-        public readonly float[][,] GradW;
+        public readonly float[][] GradW;
         public readonly float[][] GradB;
         public readonly float[][] LayerActs;
         public readonly float[][] LayerNets;
@@ -113,13 +124,14 @@ public sealed class NeuromorphicTrainableNetwork
         public readonly float[][] NeuronThreshold;
         public readonly bool[][] NeuronFired;
         public readonly Spike[][] SpikeBuffers;
+        public readonly float[][] DeltaBuffers;
         public float MseSum;
         public long SpikesSum;
 
         public ThreadScratch(IReadOnlyList<SpikingLayerState> layers)
         {
             int count = layers.Count;
-            GradW = new float[count][,];
+            GradW = new float[count][];
             GradB = new float[count][];
             LayerActs = new float[count + 1][];
             LayerNets = new float[count][];
@@ -128,16 +140,18 @@ public sealed class NeuromorphicTrainableNetwork
             NeuronThreshold = new float[count][];
             NeuronFired = new bool[count][];
             SpikeBuffers = new Spike[count + 1][];
+            DeltaBuffers = new float[count + 1][];
 
             LayerActs[0] = new float[layers[0].InputDim];
             LayerSpikeTimes[0] = new float[layers[0].InputDim];
             SpikeBuffers[0] = new Spike[layers[0].InputDim];
+            DeltaBuffers[0] = new float[layers[0].InputDim];
 
             for (int l = 0; l < count; l++)
             {
                 int inD = layers[l].InputDim;
                 int outD = layers[l].OutputDim;
-                GradW[l] = new float[outD, inD];
+                GradW[l] = new float[outD * inD];
                 GradB[l] = new float[outD];
                 LayerActs[l + 1] = new float[outD];
                 LayerNets[l] = new float[outD];
@@ -146,6 +160,7 @@ public sealed class NeuromorphicTrainableNetwork
                 NeuronThreshold[l] = new float[outD];
                 NeuronFired[l] = new bool[outD];
                 SpikeBuffers[l + 1] = new Spike[outD];
+                DeltaBuffers[l + 1] = new float[outD];
             }
         }
 
@@ -164,6 +179,8 @@ public sealed class NeuromorphicTrainableNetwork
     private readonly List<SpikingLayerState> _layers = new();
     private readonly CognitiveConfig _config;
     private readonly ThreadLocal<ThreadScratch> _scratchLocal;
+    private readonly float[][] _totalGradW;
+    private readonly float[][] _totalGradB;
     private int _adamStep;
 
     public IReadOnlyList<SpikingLayerState> Layers => _layers;
@@ -195,13 +212,17 @@ public sealed class NeuromorphicTrainableNetwork
             _layers.Add(new SpikingLayerState(map, _config, rng));
         }
 
+        _totalGradW = new float[_layers.Count][];
+        _totalGradB = new float[_layers.Count][];
+        for (int l = 0; l < _layers.Count; l++)
+        {
+            _totalGradW[l] = new float[_layers[l].OutputDim * _layers[l].InputDim];
+            _totalGradB[l] = new float[_layers[l].OutputDim];
+        }
+
         _scratchLocal = new ThreadLocal<ThreadScratch>(() => new ThreadScratch(_layers), trackAllValues: true);
     }
 
-    /// <summary>
-    /// Ejecuta una inferencia neuromórfica por eventos (espigas TTFS + integración LIF)
-    /// y devuelve los valores predichos en [0, 1] junto con el conteo de espigas procesadas.
-    /// </summary>
     public float[] Predict(ReadOnlySpan<float> input)
     {
         var scratch = _scratchLocal.Value!;
@@ -210,10 +231,6 @@ public sealed class NeuromorphicTrainableNetwork
         return (float[])scratch.LayerActs[_layers.Count].Clone();
     }
 
-    /// <summary>
-    /// Ejecuta un paso de entrenamiento sobre un mini-lote usando Surrogate-Gradient + modulación STDP
-    /// paralelizado en CPU entre las muestras del lote.
-    /// </summary>
     public float TrainStep(float[][] batchInputs, float[][] batchTargets, float learningRate = 0.005f, float stdpRate = 0.002f)
     {
         int batchSize = batchInputs.Length;
@@ -239,46 +256,43 @@ public sealed class NeuromorphicTrainableNetwork
             }
         }
 
-        // Reducción de gradientes de todos los hilos
-        var totalGradW = new float[layerCount][,];
-        var totalGradB = new float[layerCount][];
         for (int l = 0; l < layerCount; l++)
         {
-            totalGradW[l] = new float[_layers[l].OutputDim, _layers[l].InputDim];
-            totalGradB[l] = new float[_layers[l].OutputDim];
+            Array.Clear(_totalGradW[l]);
+            Array.Clear(_totalGradB[l]);
         }
 
         float totalMse = 0f;
         long batchSpikes = 0;
+        int vecLen = Vector<float>.Count;
 
         foreach (var s in _scratchLocal.Values)
         {
+            if (s.SpikesSum == 0 && s.MseSum == 0f) continue;
             totalMse += s.MseSum;
             batchSpikes += s.SpikesSum;
 
             for (int l = 0; l < layerCount; l++)
             {
-                int outD = _layers[l].OutputDim;
-                int inD = _layers[l].InputDim;
-                var gw = totalGradW[l];
-                var sgw = s.GradW[l];
-                var gb = totalGradB[l];
-                var sgb = s.GradB[l];
-
-                for (int j = 0; j < outD; j++)
+                float[] gw = _totalGradW[l];
+                float[] sgw = s.GradW[l];
+                int len = gw.Length;
+                int idx = 0;
+                for (; idx <= len - vecLen; idx += vecLen)
                 {
-                    gb[j] += sgb[j];
-                    for (int i = 0; i < inD; i++)
-                    {
-                        gw[j, i] += sgw[j, i];
-                    }
+                    var v = new Vector<float>(gw, idx) + new Vector<float>(sgw, idx);
+                    v.CopyTo(gw, idx);
                 }
+                for (; idx < len; idx++) gw[idx] += sgw[idx];
+
+                float[] gb = _totalGradB[l];
+                float[] sgb = s.GradB[l];
+                for (int j = 0; j < gb.Length; j++) gb[j] += sgb[j];
             }
         }
 
         LastSpikesProcessed = batchSpikes / batchSize;
 
-        // Actualización Adam respetando la máscara de topología
         _adamStep++;
         const float beta1 = 0.9f;
         const float beta2 = 0.999f;
@@ -286,12 +300,18 @@ public sealed class NeuromorphicTrainableNetwork
         float bc1 = 1.0f - MathF.Pow(beta1, _adamStep);
         float bc2 = 1.0f - MathF.Pow(beta2, _adamStep);
         float invBatch = 1.0f / batchSize;
+        float lrCorrected = learningRate * MathF.Sqrt(bc2) / bc1;
 
         for (int l = 0; l < layerCount; l++)
         {
             var layer = _layers[l];
-            var gwArr = totalGradW[l];
-            var gbArr = totalGradB[l];
+            float[] gwArr = _totalGradW[l];
+            float[] gbArr = _totalGradB[l];
+            float[] wArr = layer.Weights;
+            float[] mArr = layer.AdamM;
+            float[] vArr = layer.AdamV;
+            bool[] maskArr = layer.Mask;
+            bool full = layer.IsFullyConnected;
 
             for (int j = 0; j < layer.OutputDim; j++)
             {
@@ -301,17 +321,48 @@ public sealed class NeuromorphicTrainableNetwork
                 float mHatB = layer.BiasM[j] / bc1;
                 float vHatB = layer.BiasV[j] / bc2;
                 layer.Biases[j] -= learningRate * mHatB / (MathF.Sqrt(vHatB) + eps);
+            }
 
-                for (int i = 0; i < layer.InputDim; i++)
+            int totalW = wArr.Length;
+            if (full && Vector.IsHardwareAccelerated && totalW >= vecLen)
+            {
+                var vInvBatch = new Vector<float>(invBatch);
+                var vB1 = new Vector<float>(beta1);
+                var vOneMinusB1 = new Vector<float>(1f - beta1);
+                var vB2 = new Vector<float>(beta2);
+                var vOneMinusB2 = new Vector<float>(1f - beta2);
+                var vLr = new Vector<float>(lrCorrected);
+                var vEps = new Vector<float>(eps);
+
+                int idx = 0;
+                for (; idx <= totalW - vecLen; idx += vecLen)
                 {
-                    if (!layer.Mask[j, i]) continue;
+                    var g = new Vector<float>(gwArr, idx) * vInvBatch;
+                    var m = vB1 * new Vector<float>(mArr, idx) + vOneMinusB1 * g;
+                    var v = vB2 * new Vector<float>(vArr, idx) + vOneMinusB2 * g * g;
+                    m.CopyTo(mArr, idx);
+                    v.CopyTo(vArr, idx);
 
-                    float gw = gwArr[j, i] * invBatch;
-                    layer.AdamM[j, i] = beta1 * layer.AdamM[j, i] + (1f - beta1) * gw;
-                    layer.AdamV[j, i] = beta2 * layer.AdamV[j, i] + (1f - beta2) * gw * gw;
-                    float mHat = layer.AdamM[j, i] / bc1;
-                    float vHat = layer.AdamV[j, i] / bc2;
-                    layer.Weights[j, i] -= learningRate * mHat / (MathF.Sqrt(vHat) + eps);
+                    var w = new Vector<float>(wArr, idx) - vLr * m / (Vector.SquareRoot(v) + vEps);
+                    w.CopyTo(wArr, idx);
+                }
+                for (; idx < totalW; idx++)
+                {
+                    float gw = gwArr[idx] * invBatch;
+                    mArr[idx] = beta1 * mArr[idx] + (1f - beta1) * gw;
+                    vArr[idx] = beta2 * vArr[idx] + (1f - beta2) * gw * gw;
+                    wArr[idx] -= lrCorrected * mArr[idx] / (MathF.Sqrt(vArr[idx]) + eps);
+                }
+            }
+            else
+            {
+                for (int idx = 0; idx < totalW; idx++)
+                {
+                    if (!full && !maskArr[idx]) continue;
+                    float gw = gwArr[idx] * invBatch;
+                    mArr[idx] = beta1 * mArr[idx] + (1f - beta1) * gw;
+                    vArr[idx] = beta2 * vArr[idx] + (1f - beta2) * gw * gw;
+                    wArr[idx] -= lrCorrected * mArr[idx] / (MathF.Sqrt(vArr[idx]) + eps);
                 }
             }
         }
@@ -320,6 +371,7 @@ public sealed class NeuromorphicTrainableNetwork
         return totalMse / (batchSize * outCount);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void ProcessSample(float[] input, float[] target, float stdpRate, ThreadScratch scratch)
     {
         long spikes = ForwardFast(input, scratch);
@@ -329,50 +381,83 @@ public sealed class NeuromorphicTrainableNetwork
         float[] pred = scratch.LayerActs[layerCount];
         int outDim = pred.Length;
 
-        var delta = new float[outDim];
+        float[] delta = scratch.DeltaBuffers[layerCount];
         for (int k = 0; k < outDim; k++)
         {
             float err = pred[k] - target[k];
             scratch.MseSum += err * err;
-            delta[k] = (2.0f * err / outDim) * pred[k] * (1.0f - pred[k]);
+            float sig = Math.Clamp((pred[k] + 0.1f) / 1.2f, 1e-4f, 1.0f - 1e-4f);
+            delta[k] = (2.0f * err / outDim) * (1.2f * sig * (1.0f - sig));
         }
+
+        int vecLen = Vector<float>.Count;
 
         for (int l = layerCount - 1; l >= 0; l--)
         {
             var layer = _layers[l];
+            int inDim = layer.InputDim;
+            int outD = layer.OutputDim;
             float[] prevAct = scratch.LayerActs[l];
             float[] prevTimes = scratch.LayerSpikeTimes[l];
             float[] nextTimes = scratch.LayerSpikeTimes[l + 1];
-            var gw = scratch.GradW[l];
-            var gb = scratch.GradB[l];
+            float[] gw = scratch.GradW[l];
+            float[] gb = scratch.GradB[l];
+            float[] wArr = layer.Weights;
+            bool[] maskArr = layer.Mask;
+            bool full = layer.IsFullyConnected;
 
-            float[] prevDelta = l > 0 ? new float[layer.InputDim] : Array.Empty<float>();
+            float[] prevDelta = scratch.DeltaBuffers[l];
+            if (l > 0) Array.Clear(prevDelta);
 
-            for (int j = 0; j < layer.OutputDim; j++)
+            for (int j = 0; j < outD; j++)
             {
                 float dJ = delta[j];
                 gb[j] += dJ;
+                int rowOffset = j * inDim;
 
-                for (int i = 0; i < layer.InputDim; i++)
+                if (full && stdpRate <= 0f && Vector.IsHardwareAccelerated && inDim >= vecLen)
                 {
-                    if (!layer.Mask[j, i]) continue;
-
-                    float g = dJ * prevAct[i];
-
-                    if (stdpRate > 0f && !float.IsPositiveInfinity(nextTimes[j]) && !float.IsPositiveInfinity(prevTimes[i]))
+                    var vDj = new Vector<float>(dJ);
+                    int i = 0;
+                    for (; i <= inDim - vecLen; i += vecLen)
                     {
-                        float dt = nextTimes[j] - prevTimes[i];
-                        if (dt > 0f)
+                        var vAct = new Vector<float>(prevAct, i);
+                        var vGw = new Vector<float>(gw, rowOffset + i) + vDj * vAct;
+                        vGw.CopyTo(gw, rowOffset + i);
+
+                        if (l > 0)
                         {
-                            g *= 1.0f + stdpRate * MathF.Exp(-dt / 0.25f);
+                            var vPd = new Vector<float>(prevDelta, i) + vDj * new Vector<float>(wArr, rowOffset + i);
+                            vPd.CopyTo(prevDelta, i);
                         }
                     }
-
-                    gw[j, i] += g;
-
-                    if (l > 0)
+                    for (; i < inDim; i++)
                     {
-                        prevDelta[i] += dJ * layer.Weights[j, i];
+                        int idx = rowOffset + i;
+                        gw[idx] += dJ * prevAct[i];
+                        if (l > 0) prevDelta[i] += dJ * wArr[idx];
+                    }
+                }
+                else
+                {
+                    float tPost = nextTimes[j];
+                    bool hasPost = stdpRate > 0f && !float.IsPositiveInfinity(tPost);
+
+                    for (int i = 0; i < inDim; i++)
+                    {
+                        int idx = rowOffset + i;
+                        if (!full && !maskArr[idx]) continue;
+
+                        float g = dJ * prevAct[i];
+                        if (hasPost && !float.IsPositiveInfinity(prevTimes[i]))
+                        {
+                            float dt = tPost - prevTimes[i];
+                            if (dt > 0f)
+                                g *= 1.0f + stdpRate * MathF.Exp(-dt / 0.25f);
+                        }
+
+                        gw[idx] += g;
+                        if (l > 0) prevDelta[i] += dJ * wArr[idx];
                     }
                 }
             }
@@ -385,13 +470,31 @@ public sealed class NeuromorphicTrainableNetwork
 
                 for (int i = 0; i < prevDelta.Length; i++)
                 {
-                    float diff = MathF.Abs(prevNet[i] - prevThresh[i]);
-                    float denom = 1.0f + diff;
-                    float surrogate = (prevFired[i] ? 1.0f : 0.25f) / (denom * denom);
+                    float z = prevNet[i];
+                    float surrogate = prevFired[i]
+                        ? (z > 0f ? 1.0f : 0.1f)
+                        : (0.25f / (1.0f + 0.5f * MathF.Abs(z - prevThresh[i])));
                     prevDelta[i] *= surrogate;
                 }
                 delta = prevDelta;
             }
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void SortSpikesInline(Spike[] arr, int count)
+    {
+        for (int i = 1; i < count; i++)
+        {
+            Spike key = arr[i];
+            float keyT = key.Timestamp;
+            int j = i - 1;
+            while (j >= 0 && arr[j].Timestamp > keyT)
+            {
+                arr[j + 1] = arr[j];
+                j--;
+            }
+            arr[j + 1] = key;
         }
     }
 
@@ -423,7 +526,7 @@ public sealed class NeuromorphicTrainableNetwork
             spikeBuf0[currentSpikeCount++] = new Spike(i, t, normalized, val >= 0 ? 1 : -1);
         }
 
-        Array.Sort(spikeBuf0, 0, currentSpikeCount);
+        if (currentSpikeCount > 1) SortSpikesInline(spikeBuf0, currentSpikeCount);
         long totalSpikes = currentSpikeCount;
 
         Spike[] currentSpikes = spikeBuf0;
@@ -436,6 +539,8 @@ public sealed class NeuromorphicTrainableNetwork
         for (int l = 0; l < layerCount; l++)
         {
             var layer = _layers[l];
+            int inDim = layer.InputDim;
+            int outDim = layer.OutputDim;
             bool isOutputLayer = (l == layerCount - 1);
 
             float[] net = scratch.LayerNets[l];
@@ -444,22 +549,22 @@ public sealed class NeuromorphicTrainableNetwork
             float[] voltages = scratch.NeuronVoltage[l];
             float[] thresholds = scratch.NeuronThreshold[l];
             bool[] fired = scratch.NeuronFired[l];
+            float[] wArr = layer.Weights;
 
             Array.Clear(net);
             Array.Clear(voltages);
             Array.Clear(fired);
-            for (int j = 0; j < layer.OutputDim; j++)
+            for (int j = 0; j < outDim; j++)
             {
                 thresholds[j] = baseThresh;
                 times[j] = float.PositiveInfinity;
             }
 
-            // Propagación orientada a eventos usando lista de adyacencia dispersa
             for (int s = 0; s < currentSpikeCount; s++)
             {
                 var sp = currentSpikes[s];
                 int pre = sp.FeatureIndex;
-                if ((uint)pre >= (uint)layer.InputDim) continue;
+                if ((uint)pre >= (uint)inDim) continue;
 
                 float val = currentValues[pre];
                 int[] targets = layer.ConnectedTargets[pre];
@@ -467,7 +572,7 @@ public sealed class NeuromorphicTrainableNetwork
                 for (int tIdx = 0; tIdx < targets.Length; tIdx++)
                 {
                     int j = targets[tIdx];
-                    float current = layer.Weights[j, pre] * val;
+                    float current = wArr[j * inDim + pre] * val;
                     net[j] += current;
 
                     if (!isOutputLayer)
@@ -494,14 +599,15 @@ public sealed class NeuromorphicTrainableNetwork
             Spike[] nextSpikes = scratch.SpikeBuffers[l + 1];
             int nextSpikeCount = 0;
 
-            for (int j = 0; j < layer.OutputDim; j++)
+            for (int j = 0; j < outDim; j++)
             {
                 float z = net[j] + layer.Biases[j];
                 net[j] = z;
 
                 if (isOutputLayer)
                 {
-                    act[j] = 1.0f / (1.0f + MathF.Exp(-Math.Clamp(z, -20f, 20f)));
+                    float sig = 1.0f / (1.0f + MathF.Exp(-Math.Clamp(z, -20f, 20f)));
+                    act[j] = 1.2f * sig - 0.1f;
                 }
                 else
                 {
@@ -514,7 +620,9 @@ public sealed class NeuromorphicTrainableNetwork
 
                     if (fired[j]) totalSpikes++;
 
-                    float a = z > 0f ? z / (1.0f + z) : 0.05f * z;
+                    float a = fired[j]
+                        ? (z > 0f ? z : 0.1f * z)
+                        : (z > 0f ? 0.25f * z : 0.05f * z);
                     act[j] = a;
 
                     if (MathF.Abs(a) > 1e-4f)
@@ -526,7 +634,7 @@ public sealed class NeuromorphicTrainableNetwork
             }
 
             if (!isOutputLayer && nextSpikeCount > 1)
-                Array.Sort(nextSpikes, 0, nextSpikeCount);
+                SortSpikesInline(nextSpikes, nextSpikeCount);
 
             currentSpikes = nextSpikes;
             currentSpikeCount = nextSpikeCount;

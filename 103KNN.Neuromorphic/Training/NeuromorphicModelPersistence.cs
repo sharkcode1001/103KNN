@@ -45,21 +45,12 @@ public static class NeuromorphicModelPersistence
             var layer = network.Layers[l];
             var map = network.Maps[l];
 
-            var flatWeights = new float[layer.OutputDim * layer.InputDim];
-            for (int j = 0; j < layer.OutputDim; j++)
-            {
-                for (int i = 0; i < layer.InputDim; i++)
-                {
-                    flatWeights[j * layer.InputDim + i] = layer.Weights[j, i];
-                }
-            }
-
             var sLayer = new SerializedLayer
             {
                 SourceSize = layer.InputDim,
                 TargetSize = layer.OutputDim,
                 Biases = (float[])layer.Biases.Clone(),
-                Weights = flatWeights
+                Weights = (float[])layer.Weights.Clone()
             };
 
             foreach (var (src, dst) in map.Connections)
@@ -110,15 +101,7 @@ public static class NeuromorphicModelPersistence
             var sl = pkg.Layers[l];
 
             Array.Copy(sl.Biases, layer.Biases, Math.Min(sl.Biases.Length, layer.Biases.Length));
-            for (int j = 0; j < layer.OutputDim; j++)
-            {
-                for (int i = 0; i < layer.InputDim; i++)
-                {
-                    int idx = j * layer.InputDim + i;
-                    if (idx < sl.Weights.Length)
-                        layer.Weights[j, i] = sl.Weights[idx];
-                }
-            }
+            Array.Copy(sl.Weights, layer.Weights, Math.Min(sl.Weights.Length, layer.Weights.Length));
         }
 
         return network;

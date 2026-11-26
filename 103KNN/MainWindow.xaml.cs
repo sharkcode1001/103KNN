@@ -45,7 +45,11 @@ public partial class MainWindow : Window
             DesignerCanvas.UpdateStructure(layers);
         }
 
-        DesignerCanvas.StructureChanged += (_, _) => UpdateTopologyStats();
+        DesignerCanvas.StructureChanged += (_, _) =>
+        {
+            UpdateTopologyStats();
+            if (!_trainerEngine.IsTraining) EnsureMapsInitialized();
+        };
         UpdateTopologyStats();
 
         _trainerEngine.OnLog += msg => Dispatcher.Invoke(() => TrainerLog(msg));
@@ -125,6 +129,9 @@ public partial class MainWindow : Window
         CmbArchNeuro.Content = "103KNN Neuromorphic";
         CmbArchFastTree.Content = en ? "FastTree (GBDT Tabular)" : "FastTree (GBDT Tabular)";
         CmbArchFastForest.Content = "FastForest (Random Forest)";
+        CmbArchStdMlp.Content = "Standard MLP (PyTorch)";
+        CmbArchResNet.Content = "ResNet-Tabular (Skip)";
+        CmbArchLstm.Content = en ? "LSTM (Recurrent)" : "LSTM (Recurrente)";
 
         BtnShowNetProps.Content = en ? "Network Props" : "Propiedades Red";
         BtnShowTrainProps.Content = en ? "Training Config" : "Config. Entreno";
@@ -165,13 +172,15 @@ public partial class MainWindow : Window
         LblBenchChartTitle.Text = en ? "TIME & CONVERGENCE COMPARISON" : "COMPARATIVA DE TIEMPO Y CONVERGENCIA";
         LblBenchTableTitle.Text = en ? "COMPARATIVE METRICS BY ARCHITECTURE" : "MÉTRICAS COMPARATIVAS POR ARQUITECTURA";
         ColBenchArch.Header = en ? "Architecture" : "Arquitectura";
-        ColBenchMse.Header = en ? "Final MSE" : "MSE Final";
+        ColBenchMse.Header = en ? "Train MSE" : "MSE Train";
+        ColBenchTestMse.Header = en ? "Test MSE" : "MSE Test";
         ColBenchEpochs.Header = en ? "Epochs" : "Épocas";
         ColBenchTime.Header = en ? "Total Time" : "Tiempo Total";
         ColBenchMsEpoch.Header = en ? "ms / Epoch" : "ms / Época";
         ColBenchInference.Header = en ? "Infer (µs/sample)" : "Inferencia (µs/muestra)";
         ColBenchOps.Header = en ? "Ops / Spikes" : "Ops / Espigas";
         ColBenchResult.Header = en ? "Result" : "Resultado";
+        ChkBenchTrainTestSplit.Content = en ? "80/20 Train/Test Split (Generalization)" : "División 80/20 Train/Test (Generalización)";
 
         LblBenchConfigTitle.Text = en ? "BENCHMARK SETUP" : "CONFIGURAR COMPARATIVA";
         LblBenchArchsTitle.Text = en ? "ARCHITECTURES TO EVALUATE" : "ARQUITECTURAS A EVALUAR";
@@ -255,6 +264,9 @@ public partial class MainWindow : Window
         2 => NetworkArchitectureType.NewNow,
         4 => NetworkArchitectureType.FastTree,
         5 => NetworkArchitectureType.FastForest,
+        6 => NetworkArchitectureType.StandardMlp,
+        7 => NetworkArchitectureType.ResNetTabular,
+        8 => NetworkArchitectureType.Lstm,
         _ => NetworkArchitectureType.Neuromorphic
     };
 
@@ -265,6 +277,9 @@ public partial class MainWindow : Window
         NetworkArchitectureType.NewNow => _isEnglish ? "NewNow (Dynamic)" : "NewNow (Dinámica)",
         NetworkArchitectureType.FastTree => "FastTree (GBDT)",
         NetworkArchitectureType.FastForest => "FastForest (RF)",
+        NetworkArchitectureType.StandardMlp => "Standard MLP (PyTorch)",
+        NetworkArchitectureType.ResNetTabular => "ResNet-Tabular",
+        NetworkArchitectureType.Lstm => "LSTM (Recurrent)",
         _ => "103KNN Neuromorphic"
     };
 
@@ -473,7 +488,24 @@ public partial class MainWindow : Window
 
     private void EnsureMapsInitialized()
     {
-        if (_trainerEngine.Maps.Count == 0 && DesignerCanvas.Maps.Count > 0)
+        if (DesignerCanvas.Maps.Count == 0) return;
+
+        bool mismatch = _trainerEngine.Maps.Count != DesignerCanvas.Maps.Count;
+        if (!mismatch)
+        {
+            for (int i = 0; i < DesignerCanvas.Maps.Count; i++)
+            {
+                if (_trainerEngine.Maps[i].SourceSize != DesignerCanvas.Maps[i].SourceSize ||
+                    _trainerEngine.Maps[i].TargetSize != DesignerCanvas.Maps[i].TargetSize ||
+                    _trainerEngine.Maps[i].Connections.Count != DesignerCanvas.Maps[i].Connections.Count)
+                {
+                    mismatch = true;
+                    break;
+                }
+            }
+        }
+
+        if (mismatch)
         {
             SyncSettingsFromUI();
             _trainerEngine.Initialize(SelectedArchitecture, DesignerCanvas.Maps, CreateSelectedActivation(), _trainingSettings);
@@ -573,6 +605,9 @@ public partial class MainWindow : Window
         if (ChkBenchNeuro.IsChecked == true) selectedArchs.Add(NetworkArchitectureType.Neuromorphic);
         if (ChkBenchFastTree.IsChecked == true) selectedArchs.Add(NetworkArchitectureType.FastTree);
         if (ChkBenchFastForest.IsChecked == true) selectedArchs.Add(NetworkArchitectureType.FastForest);
+        if (ChkBenchStdMlp.IsChecked == true) selectedArchs.Add(NetworkArchitectureType.StandardMlp);
+        if (ChkBenchResNet.IsChecked == true) selectedArchs.Add(NetworkArchitectureType.ResNetTabular);
+        if (ChkBenchLstm.IsChecked == true) selectedArchs.Add(NetworkArchitectureType.Lstm);
 
         if (selectedArchs.Count == 0)
         {
@@ -588,6 +623,23 @@ public partial class MainWindow : Window
         var rawTargets = _trainerEngine.RawTargets!;
         var maps = DesignerCanvas.Maps;
         var activation = CreateSelectedActivation();
+
+        bool useSplit = ChkBenchTrainTestSplit.IsChecked == true && rawInputs.Length >= 10;
+        float[][] trainInputs = rawInputs;
+        float[][] trainTargets = rawTargets;
+        float[][] evalInputs = rawInputs;
+        float[][] evalTargets = rawTargets;
+
+        if (useSplit)
+        {
+            var splitRng = new Random(103);
+            int[] perm = Enumerable.Range(0, rawInputs.Length).OrderBy(_ => splitRng.Next()).ToArray();
+            int trainCount = Math.Max(5, (int)(rawInputs.Length * 0.8));
+            trainInputs = perm.Take(trainCount).Select(idx => rawInputs[idx]).ToArray();
+            trainTargets = perm.Take(trainCount).Select(idx => rawTargets[idx]).ToArray();
+            evalInputs = perm.Skip(trainCount).Select(idx => rawInputs[idx]).ToArray();
+            evalTargets = perm.Skip(trainCount).Select(idx => rawTargets[idx]).ToArray();
+        }
 
         _benchmarkResults.Clear();
         BenchChart.SetResults(_benchmarkResults);
@@ -611,26 +663,56 @@ public partial class MainWindow : Window
 
                 using var benchEngine = new ModelTrainerEngine();
                 benchEngine.Initialize(arch, maps, activation, _trainingSettings);
-                benchEngine.SetData(rawInputs, rawTargets, normalize: true);
+                benchEngine.SetData(trainInputs, trainTargets, normalize: true);
+
+                using var cancelReg = _benchCts.Token.Register(() => benchEngine.Stop());
+                benchEngine.OnProgressUpdated += () =>
+                {
+                    if (!benchEngine.IsTraining) return;
+                    long ep = benchEngine.CurrentEpoch;
+                    if (ep != 1 && ep % 20 != 0 && ep < maxEpochs) return;
+                    Dispatcher.BeginInvoke(() =>
+                    {
+                        if (!benchEngine.IsTraining) return;
+                        item.EpochsRun = benchEngine.CurrentEpoch;
+                        item.FinalMse = benchEngine.CurrentMSE;
+                        item.Status = _isEnglish
+                            ? $"Training ({benchEngine.CurrentEpoch}/{maxEpochs})..."
+                            : $"Entrenando ({benchEngine.CurrentEpoch}/{maxEpochs})...";
+                        BenchDataGrid.Items.Refresh();
+                    });
+                };
 
                 var sw = Stopwatch.StartNew();
                 await benchEngine.StartTrainingAsync(targetMse, maxEpochs);
                 sw.Stop();
 
-                // Benchmark de inferencia sobre las muestras del dataset
+                if (_benchCts.Token.IsCancellationRequested)
+                {
+                    item.EpochsRun = benchEngine.CurrentEpoch;
+                    item.FinalMse = benchEngine.CurrentMSE;
+                    item.TotalMs = sw.Elapsed.TotalMilliseconds;
+                    item.Status = _isEnglish ? "Stopped" : "Detenido";
+                    BenchDataGrid.Items.Refresh();
+                    break;
+                }
+
+                float testMse = float.NaN;
                 var infSw = Stopwatch.StartNew();
                 int evalCount = 0;
                 await Task.Run(() =>
                 {
-                    for (int i = 0; i < rawInputs.Length; i++)
+                    testMse = benchEngine.EvaluateNormalizedMse(evalInputs, evalTargets);
+                    for (int i = 0; i < evalInputs.Length; i++)
                     {
-                        var pred = benchEngine.Predict(rawInputs[i]);
+                        var pred = benchEngine.Predict(evalInputs[i]);
                         if (pred.Success) evalCount++;
                     }
                 });
                 infSw.Stop();
 
                 item.FinalMse = benchEngine.CurrentMSE;
+                item.TestMse = float.IsNaN(testMse) ? null : testMse;
                 item.EpochsRun = benchEngine.CurrentEpoch;
                 item.TotalMs = sw.Elapsed.TotalMilliseconds;
                 item.MsPerEpoch = item.EpochsRun > 0 ? item.TotalMs / item.EpochsRun : item.TotalMs;
@@ -646,7 +728,7 @@ public partial class MainWindow : Window
 
             if (_benchmarkResults.Count > 1)
             {
-                var bestMse = _benchmarkResults.OrderBy(r => r.FinalMse).First();
+                var bestMse = _benchmarkResults.OrderBy(r => r.TestMse ?? r.FinalMse).First();
                 var fastest = _benchmarkResults.OrderBy(r => r.TotalMs).First();
                 foreach (var r in _benchmarkResults)
                 {
@@ -780,6 +862,10 @@ public partial class MainWindow : Window
                 ChkBenchNeuro.IsChecked = set.Contains(3);
                 ChkBenchFastTree.IsChecked = set.Contains(4);
                 ChkBenchFastForest.IsChecked = set.Contains(5);
+                ChkBenchStdMlp.IsChecked = set.Contains(6);
+                ChkBenchResNet.IsChecked = set.Contains(7);
+                ChkBenchLstm.IsChecked = set.Contains(8);
+                ChkBenchTrainTestSplit.IsChecked = req.TrainTestSplit;
 
                 await ExecuteBenchmarkCoreAsync();
                 tcs.SetResult(GetRemoteBenchmarkResults());
@@ -802,7 +888,7 @@ public partial class MainWindow : Window
 
     public void ApplyRemoteDesign(int type, int inputs, int[] hidden, int outputs)
     {
-        CmbArchitecture.SelectedIndex = Math.Clamp(type, 0, 5);
+        CmbArchitecture.SelectedIndex = Math.Clamp(type, 0, 8);
         var list = new List<int> { inputs };
         list.AddRange(hidden);
         list.Add(outputs);

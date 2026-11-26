@@ -12,7 +12,10 @@ public enum NetworkArchitectureType
     NewNow = 2,
     Neuromorphic = 3,
     FastTree = 4,
-    FastForest = 5
+    FastForest = 5,
+    StandardMlp = 6,
+    ResNetTabular = 7,
+    Lstm = 8
 }
 
 public enum OptimizerType

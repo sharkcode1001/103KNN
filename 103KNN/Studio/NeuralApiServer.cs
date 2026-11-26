@@ -94,7 +94,11 @@ public class NeuralApiServer
                             "POST /train/stop",
                             "POST /predict                [0.5, 0.5]"
                         },
-                        architectures = new { Nowral = 0, LibQuid = 1, NewNow = 2, Neuromorphic103KNN = 3, FastTree = 4, FastForest = 5 }
+                        architectures = new
+                        {
+                            Nowral = 0, LibQuid = 1, NewNow = 2, Neuromorphic103KNN = 3,
+                            FastTree = 4, FastForest = 5, StandardMlp = 6, ResNetTabular = 7, Lstm = 8
+                        }
                     };
                     break;
 
@@ -221,6 +225,7 @@ public class BenchmarkRunRequest
     public float TargetError { get; set; } = 0.0001f;
     public double? LearningRate { get; set; }
     public int? BatchSize { get; set; }
+    public bool TrainTestSplit { get; set; } = true;
 }
 
 public class DesignRequest

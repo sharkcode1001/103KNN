@@ -30,6 +30,9 @@ public sealed class ModelTrainerEngine : IDisposable
     private NewNowNetwork? _newNowNet;
     private NeuromorphicTrainableNetwork? _neuroNet;
     private TabularTreeEnsemble? _treeEnsemble;
+    private StandardMlpNetwork? _stdMlpNet;
+    private ResNetTabularNetwork? _resNetNet;
+    private LstmTabularNetwork? _lstmNet;
 
     private torch.optim.Optimizer? _torchOptimizer;
     private CancellationTokenSource? _cts;
@@ -44,6 +47,7 @@ public sealed class ModelTrainerEngine : IDisposable
     private float[]? _minIn, _maxIn;
     private float[]? _minOut, _maxOut;
     private readonly Queue<float[]> _liquidPredictionBuffer = new();
+    private readonly Queue<float[]> _lstmPredictionBuffer = new();
 
     public NetworkArchitectureType Architecture { get; private set; }
     public List<ConnectionMap> Maps { get; private set; } = new();
@@ -80,6 +84,7 @@ public sealed class ModelTrainerEngine : IDisposable
         CurrentMSE = 0f;
         LastOpsOrSpikes = 0;
         _liquidPredictionBuffer.Clear();
+        _lstmPredictionBuffer.Clear();
 
         if (Maps.Count == 0) return;
 
@@ -127,6 +132,27 @@ public sealed class ModelTrainerEngine : IDisposable
                     numberOfTrees: 200);
                 LastOpsOrSpikes = _treeEnsemble.NumberOfTrees * Maps[^1].TargetSize;
                 break;
+
+            case NetworkArchitectureType.StandardMlp:
+                _stdMlpNet = new StandardMlpNetwork(GetLayerSizes(), Activation);
+                _torchOptimizer = CreateTorchOptimizer(_stdMlpNet.parameters());
+                LastOpsOrSpikes = Maps.Sum(m => (long)m.SourceSize * m.TargetSize);
+                break;
+
+            case NetworkArchitectureType.ResNetTabular:
+                int hiddenW = Maps.Count > 1 ? Maps[0].TargetSize : 32;
+                _resNetNet = new ResNetTabularNetwork(Maps[0].SourceSize, hiddenW, Maps[^1].TargetSize, numBlocks: 2);
+                _torchOptimizer = CreateTorchOptimizer(_resNetNet.parameters());
+                LastOpsOrSpikes = Maps[0].SourceSize * hiddenW + (4L * hiddenW * hiddenW) + hiddenW * Maps[^1].TargetSize;
+                break;
+
+            case NetworkArchitectureType.Lstm:
+                int lstmH = Maps.Count > 1 ? Maps[0].TargetSize : 32;
+                _lstmNet = new LstmTabularNetwork(Maps[0].SourceSize, lstmH, Maps[^1].TargetSize);
+                _torchOptimizer = CreateTorchOptimizer(_lstmNet.parameters());
+                LastOpsOrSpikes = (4L * (Maps[0].SourceSize + lstmH) * lstmH) * LiquidWindowSize;
+                PrepareLiquidSequences();
+                break;
         }
 
         OnLog?.Invoke($"Red [{Architecture}] inicializada. Capas: {string.Join("-", GetLayerSizes())}");
@@ -160,7 +186,7 @@ public sealed class ModelTrainerEngine : IDisposable
             _minIn = _maxIn = _minOut = _maxOut = null;
         }
 
-        if (Architecture == NetworkArchitectureType.LibQuid)
+        if (Architecture == NetworkArchitectureType.LibQuid || Architecture == NetworkArchitectureType.Lstm)
         {
             PrepareLiquidSequences();
         }
@@ -262,12 +288,11 @@ public sealed class ModelTrainerEngine : IDisposable
 
         try
         {
-            await Task.Run(() => RunTrainingLoop(targetError, maxEpochs, _cts.Token), _cts.Token);
-            OnLog?.Invoke($"🏆 Entrenamiento finalizado. Época {CurrentEpoch} | MSE: {CurrentMSE:F8}");
-        }
-        catch (OperationCanceledException)
-        {
-            OnLog?.Invoke($"⏹️ Entrenamiento detenido por el usuario en época {CurrentEpoch}.");
+            await Task.Run(() => RunTrainingLoop(targetError, maxEpochs, _cts.Token));
+            if (_cts.Token.IsCancellationRequested)
+                OnLog?.Invoke($"⏹️ Entrenamiento detenido por el usuario en época {CurrentEpoch}.");
+            else
+                OnLog?.Invoke($"🏆 Entrenamiento finalizado. Época {CurrentEpoch} | MSE: {CurrentMSE:F8}");
         }
         catch (Exception ex)
         {
@@ -281,7 +306,48 @@ public sealed class ModelTrainerEngine : IDisposable
         }
     }
 
-    public void Stop() => _cts?.Cancel();
+    public void Stop()
+    {
+        try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
+    }
+
+    /// <summary>
+    /// Evalúa el MSE sobre un conjunto de prueba en la misma escala normalizada [0, 1] del entrenamiento,
+    /// sin fuga de datos (usa _minIn/_maxIn/_minOut/_maxOut calculados en SetData).
+    /// </summary>
+    public float EvaluateNormalizedMse(float[][] testInputs, float[][] testTargets)
+    {
+        if (testInputs.Length == 0 || testTargets.Length == 0 || Maps.Count == 0) return float.NaN;
+
+        _liquidPredictionBuffer.Clear();
+        _lstmPredictionBuffer.Clear();
+        double totalSqErr = 0;
+        int evaluated = 0;
+        int outDim = Maps[^1].TargetSize;
+
+        for (int i = 0; i < testInputs.Length; i++)
+        {
+            var res = Predict(testInputs[i]);
+            if (!res.Success || res.Prediction == null) continue;
+
+            for (int k = 0; k < outDim && k < res.Prediction.Length; k++)
+            {
+                float predNorm = res.Prediction[k];
+                float targNorm = testTargets[i][k];
+                if (_minOut != null && _maxOut != null && k < _minOut.Length)
+                {
+                    float range = _maxOut[k] - _minOut[k];
+                    predNorm = range == 0 ? 0f : (predNorm - _minOut[k]) / range;
+                    targNorm = range == 0 ? 0f : (targNorm - _minOut[k]) / range;
+                }
+                double err = predNorm - targNorm;
+                totalSqErr += err * err;
+            }
+            evaluated++;
+        }
+
+        return evaluated > 0 ? (float)(totalSqErr / (evaluated * outDim)) : float.NaN;
+    }
 
     public PredictionResultDto Predict(float[] rawInput)
     {
@@ -351,6 +417,41 @@ public sealed class ModelTrainerEngine : IDisposable
                 case NetworkArchitectureType.FastForest:
                     if (_treeEnsemble == null) return PredictionResultDto.Fail("Modelo tabular no inicializado.");
                     pred = _treeEnsemble.Predict(input);
+                    break;
+
+                case NetworkArchitectureType.StandardMlp:
+                    if (_stdMlpNet == null) return PredictionResultDto.Fail("Red Standard MLP no inicializada.");
+                    _stdMlpNet.eval();
+                    using (var scope = torch.NewDisposeScope())
+                    {
+                        var tIn = torch.tensor(input, ScalarType.Float32).view(1, -1);
+                        pred = _stdMlpNet.forward(tIn).data<float>().ToArray();
+                    }
+                    break;
+
+                case NetworkArchitectureType.ResNetTabular:
+                    if (_resNetNet == null) return PredictionResultDto.Fail("Red ResNet-Tabular no inicializada.");
+                    _resNetNet.eval();
+                    using (var scope = torch.NewDisposeScope())
+                    {
+                        var tIn = torch.tensor(input, ScalarType.Float32).view(1, -1);
+                        pred = _resNetNet.forward(tIn).data<float>().ToArray();
+                    }
+                    break;
+
+                case NetworkArchitectureType.Lstm:
+                    if (_lstmNet == null) return PredictionResultDto.Fail("Red LSTM no inicializada.");
+                    _lstmPredictionBuffer.Enqueue(input);
+                    if (_lstmPredictionBuffer.Count > LiquidWindowSize) _lstmPredictionBuffer.Dequeue();
+                    if (_lstmPredictionBuffer.Count < LiquidWindowSize)
+                        return PredictionResultDto.Fail($"Buffer LSTM: {_lstmPredictionBuffer.Count}/{LiquidWindowSize} pasos.");
+                    var lstmSeq = _lstmPredictionBuffer.SelectMany(x => x).ToArray();
+                    _lstmNet.eval();
+                    using (var scope = torch.NewDisposeScope())
+                    {
+                        var tIn = torch.tensor(lstmSeq, new long[] { 1, LiquidWindowSize, inSize }).to(ScalarType.Float32);
+                        pred = _lstmNet.forward(tIn).data<float>().ToArray();
+                    }
                     break;
 
                 default:
@@ -454,7 +555,9 @@ public sealed class ModelTrainerEngine : IDisposable
         if (Architecture == NetworkArchitectureType.FastTree || Architecture == NetworkArchitectureType.FastForest)
         {
             if (_treeEnsemble == null || _normInputs == null || _normTargets == null) return;
+            if (maxEpochs > 0) _treeEnsemble.NumberOfTrees = (int)Math.Min(maxEpochs, 2000);
             CurrentEpoch = _treeEnsemble.NumberOfTrees;
+            LastOpsOrSpikes = _treeEnsemble.NumberOfTrees * Maps[^1].TargetSize;
             CurrentMSE = _treeEnsemble.Train(_normInputs, _normTargets, Settings.LearningRate);
             OnProgressUpdated?.Invoke();
             return;
@@ -472,7 +575,93 @@ public sealed class ModelTrainerEngine : IDisposable
             return;
         }
 
+        if (Architecture == NetworkArchitectureType.Lstm)
+        {
+            TrainLstmLoop(targetError, maxEpochs, token);
+            return;
+        }
+
+        if (Architecture == NetworkArchitectureType.StandardMlp || Architecture == NetworkArchitectureType.ResNetTabular)
+        {
+            TrainStandardTorchLoop(targetError, maxEpochs, token);
+            return;
+        }
+
         TrainNewNowLoop(targetError, maxEpochs, token);
+    }
+
+    private void TrainStandardTorchLoop(float targetError, long maxEpochs, CancellationToken token)
+    {
+        if (_torchOptimizer == null || _normInputs == null || _normTargets == null) return;
+
+        int numSamples = _normInputs.Length;
+        int batchSize = numSamples > 2000 ? Math.Max(Settings.BatchSize, 512) : Math.Max(1, Settings.BatchSize);
+        int inDim = _normInputs[0].Length;
+        int outDim = _normTargets[0].Length;
+        var rng = new Random(103);
+        int[] indices = Enumerable.Range(0, numSamples).ToArray();
+
+        while (!token.IsCancellationRequested)
+        {
+            float epochError = 0f;
+            for (int k = numSamples - 1; k > 0; k--)
+            {
+                int swapIdx = rng.Next(k + 1);
+                (indices[k], indices[swapIdx]) = (indices[swapIdx], indices[k]);
+            }
+
+            for (int i = 0; i < numSamples; i += batchSize)
+            {
+                if (token.IsCancellationRequested) return;
+                int currentBatch = Math.Min(batchSize, numSamples - i);
+                var bIn = new float[currentBatch * inDim];
+                var bOut = new float[currentBatch * outDim];
+
+                for (int b = 0; b < currentBatch; b++)
+                {
+                    int idx = indices[i + b];
+                    Array.Copy(_normInputs[idx], 0, bIn, b * inDim, inDim);
+                    Array.Copy(_normTargets[idx], 0, bOut, b * outDim, outDim);
+                }
+
+                using var tIn = torch.tensor(bIn, new long[] { currentBatch, inDim }, ScalarType.Float32);
+                using var tOut = torch.tensor(bOut, new long[] { currentBatch, outDim }, ScalarType.Float32);
+                float loss = Architecture == NetworkArchitectureType.ResNetTabular
+                    ? _resNetNet!.TrainStep(tIn, tOut, _torchOptimizer)
+                    : _stdMlpNet!.TrainStep(tIn, tOut, _torchOptimizer);
+                epochError += loss * currentBatch;
+            }
+
+            CurrentEpoch++;
+            CurrentMSE = epochError / numSamples;
+            OnProgressUpdated?.Invoke();
+            if (CurrentMSE <= targetError || (maxEpochs > 0 && CurrentEpoch >= maxEpochs)) break;
+        }
+    }
+
+    private void TrainLstmLoop(float targetError, long maxEpochs, CancellationToken token)
+    {
+        if (_lstmNet == null || _torchOptimizer == null || _liquidInputs == null || _liquidTargets == null) return;
+
+        int samples = _liquidInputs.GetLength(0);
+        int window = _liquidInputs.GetLength(1);
+        int features = _liquidInputs.GetLength(2);
+        int outSize = Maps[^1].TargetSize;
+
+        var flatIn = _liquidInputs.Cast<float>().ToArray();
+        var flatOut = _liquidTargets.SelectMany(x => x).ToArray();
+
+        using var tIn = torch.tensor(flatIn, new long[] { samples, window, features }).to(ScalarType.Float32);
+        using var tOut = torch.tensor(flatOut, new long[] { samples, outSize }).to(ScalarType.Float32);
+
+        while (!token.IsCancellationRequested)
+        {
+            using var scope = torch.NewDisposeScope();
+            CurrentEpoch++;
+            CurrentMSE = _lstmNet.TrainStep(tIn, tOut, _torchOptimizer);
+            if (CurrentEpoch % 5 == 0) OnProgressUpdated?.Invoke();
+            if (CurrentMSE <= targetError || (maxEpochs > 0 && CurrentEpoch >= maxEpochs)) break;
+        }
     }
 
     private void TrainNowralLoop(float targetError, long maxEpochs, CancellationToken token)
@@ -527,8 +716,8 @@ public sealed class ModelTrainerEngine : IDisposable
         if (_newNowNet == null || _torchOptimizer == null || _normInputs == null || _normTargets == null) return;
         _newNowNet.train();
 
-        int batchSize = Math.Max(1, Settings.BatchSize);
         int numSamples = _normInputs.Length;
+        int batchSize = numSamples > 2000 ? Math.Max(Settings.BatchSize, 128) : Math.Max(1, Settings.BatchSize);
         int inDim = _normInputs[0].Length;
         int outDim = _normTargets[0].Length;
         var rng = new Random();
@@ -541,7 +730,7 @@ public sealed class ModelTrainerEngine : IDisposable
 
             for (int i = 0; i < numSamples; i += batchSize)
             {
-                token.ThrowIfCancellationRequested();
+                if (token.IsCancellationRequested) return;
                 int currentBatch = Math.Min(batchSize, numSamples - i);
                 var bIn = new float[currentBatch * inDim];
                 var bOut = new float[currentBatch * outDim];
@@ -571,24 +760,31 @@ public sealed class ModelTrainerEngine : IDisposable
     {
         if (_neuroNet == null || _normInputs == null || _normTargets == null) return;
 
-        int batchSize = Math.Max(1, Settings.BatchSize);
         int numSamples = _normInputs.Length;
-        float lr = (float)Settings.LearningRate;
+        int batchSize = numSamples > 2000 ? Math.Max(Settings.BatchSize, 256) : Math.Max(1, Settings.BatchSize);
+        float lr = (float)Settings.LearningRate * (batchSize >= 256 ? 1.5f : 1.0f);
         float stdp = (float)Settings.StdpRate;
         var rng = new Random(103);
         int[] indices = Enumerable.Range(0, numSamples).ToArray();
+        var bInFull = new float[batchSize][];
+        var bOutFull = new float[batchSize][];
 
         while (!token.IsCancellationRequested)
         {
             float epochError = 0f;
-            indices = indices.OrderBy(_ => rng.Next()).ToArray();
+            // Fisher-Yates in-place shuffle (cero asignaciones)
+            for (int k = numSamples - 1; k > 0; k--)
+            {
+                int swapIdx = rng.Next(k + 1);
+                (indices[k], indices[swapIdx]) = (indices[swapIdx], indices[k]);
+            }
 
             for (int i = 0; i < numSamples; i += batchSize)
             {
-                token.ThrowIfCancellationRequested();
+                if (token.IsCancellationRequested) return;
                 int currentBatch = Math.Min(batchSize, numSamples - i);
-                var bIn = new float[currentBatch][];
-                var bOut = new float[currentBatch][];
+                var bIn = currentBatch == batchSize ? bInFull : new float[currentBatch][];
+                var bOut = currentBatch == batchSize ? bOutFull : new float[currentBatch][];
 
                 for (int b = 0; b < currentBatch; b++)
                 {
@@ -734,6 +930,12 @@ public sealed class ModelTrainerEngine : IDisposable
         _neuroNet = null;
         _treeEnsemble?.Dispose();
         _treeEnsemble = null;
+        _stdMlpNet?.Dispose();
+        _stdMlpNet = null;
+        _resNetNet?.Dispose();
+        _resNetNet = null;
+        _lstmNet?.Dispose();
+        _lstmNet = null;
     }
 
     public void Dispose()
