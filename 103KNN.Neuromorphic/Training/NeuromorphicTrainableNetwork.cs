@@ -10,6 +10,17 @@ using _103KNN.Neuromorphic.Neurons;
 namespace _103KNN.Neuromorphic.Training;
 
 /// <summary>
+/// Métricas detalladas de una ejecución individual del motor neuromórfico.
+/// </summary>
+/// <param name="LifFiredCount">Número de neuronas ocultas LIF que superaron su umbral y dispararon.</param>
+/// <param name="PropagatedEventCount">Total de eventos propagados entre capas (espigas TTFS de entrada más eventos enviados a capas siguientes, incluidas activaciones sub-umbral).</param>
+/// <param name="SynapticOpsCount">Total de operaciones sinápticas ejecutadas por evento al recorrer <c>ConnectedTargets</c> (cuenta operaciones por evento, no conexiones únicas).</param>
+public readonly record struct NeuromorphicInferenceMetrics(
+    long LifFiredCount,
+    long PropagatedEventCount,
+    long SynapticOpsCount);
+
+/// <summary>
 /// Especificación de topología entre dos capas para el motor neuromórfico entrenable.
 /// </summary>
 public sealed class NeuromorphicLayerMap
@@ -147,6 +158,9 @@ public sealed class NeuromorphicTrainableNetwork
         public readonly float[][] DeltaBuffers;
         public float MseSum;
         public long SpikesSum;
+        public long LifFiredSum;
+        public long PropagatedEventsSum;
+        public long SynapticOpsSum;
 
         public ThreadScratch(IReadOnlyList<SpikingLayerState> layers)
         {
@@ -188,6 +202,9 @@ public sealed class NeuromorphicTrainableNetwork
         {
             MseSum = 0f;
             SpikesSum = 0;
+            LifFiredSum = 0;
+            PropagatedEventsSum = 0;
+            SynapticOpsSum = 0;
             for (int l = 0; l < GradW.Length; l++)
             {
                 Array.Clear(GradW[l]);
@@ -204,16 +221,34 @@ public sealed class NeuromorphicTrainableNetwork
     private readonly ReaderWriterLockSlim _rwLock = new(LockRecursionPolicy.NoRecursion);
     private int _adamStep;
     private long _lastSpikesProcessed;
+    private long _lastLifFiredCount;
+    private long _lastPropagatedEventCount;
+    private long _lastSynapticOpsCount;
 
     public IReadOnlyList<SpikingLayerState> Layers => _layers;
     public IReadOnlyList<NeuromorphicLayerMap> Maps { get; }
     public CognitiveConfig Config => _config;
 
     /// <summary>
-    /// Último conteo global de espigas registrado por el motor.
-    /// En llamadas concurrentes a <see cref="Predict"/>, refleja de forma atómica el último conteo completado.
+    /// Último conteo global de espigas registrado por el motor (espigas TTFS de entrada + disparos LIF ocultos).
+    /// En llamadas concurrentes a <see cref="Predict"/>, refleja de forma atómica la última operación completada.
     /// </summary>
     public long LastSpikesProcessed => Interlocked.Read(ref _lastSpikesProcessed);
+
+    /// <summary>
+    /// Métrica global de la última operación completada: número de neuronas ocultas LIF que superaron su umbral y dispararon.
+    /// </summary>
+    public long LastLifFiredCount => Interlocked.Read(ref _lastLifFiredCount);
+
+    /// <summary>
+    /// Métrica global de la última operación completada: total de eventos propagados entre capas (entrada TTFS + eventos enviados a capas siguientes).
+    /// </summary>
+    public long LastPropagatedEventCount => Interlocked.Read(ref _lastPropagatedEventCount);
+
+    /// <summary>
+    /// Métrica global de la última operación completada: operaciones sinápticas recorridas por evento mediante <c>ConnectedTargets</c> (cuenta operaciones por evento, no conexiones únicas).
+    /// </summary>
+    public long LastSynapticOpsCount => Interlocked.Read(ref _lastSynapticOpsCount);
     public float[]? MinIn { get; set; }
     public float[]? MaxIn { get; set; }
     public float[]? MinOut { get; set; }
@@ -311,15 +346,23 @@ public sealed class NeuromorphicTrainableNetwork
         }
     }
 
-    private float[] PredictInternal(ReadOnlySpan<float> input)
+    private float[] PredictInternal(ReadOnlySpan<float> input, out NeuromorphicInferenceMetrics metrics)
     {
         var scratch = _scratchLocal.Value!;
-        long spikes = ForwardFast(input, scratch);
+        long spikes = ForwardFast(input, scratch, out metrics);
         Interlocked.Exchange(ref _lastSpikesProcessed, spikes);
+        Interlocked.Exchange(ref _lastLifFiredCount, metrics.LifFiredCount);
+        Interlocked.Exchange(ref _lastPropagatedEventCount, metrics.PropagatedEventCount);
+        Interlocked.Exchange(ref _lastSynapticOpsCount, metrics.SynapticOpsCount);
         return (float[])scratch.LayerActs[_layers.Count].Clone();
     }
 
-    public float[] Predict(ReadOnlySpan<float> input)
+    public float[] Predict(ReadOnlySpan<float> input) => Predict(input, out _);
+
+    /// <summary>
+    /// Ejecuta inferencia devolviendo las métricas independientes de esta llamada concreta.
+    /// </summary>
+    public float[] Predict(ReadOnlySpan<float> input, out NeuromorphicInferenceMetrics metrics)
     {
         int expectedIn = _layers[0].InputDim;
         if (input.Length != expectedIn)
@@ -329,7 +372,7 @@ public sealed class NeuromorphicTrainableNetwork
         _rwLock.EnterReadLock();
         try
         {
-            return PredictInternal(input);
+            return PredictInternal(input, out metrics);
         }
         finally
         {
@@ -340,7 +383,12 @@ public sealed class NeuromorphicTrainableNetwork
     /// <summary>
     /// Predice en escala original aplicando automáticamente los rangos Min/Max guardados en el modelo.
     /// </summary>
-    public float[] PredictRaw(ReadOnlySpan<float> rawInput)
+    public float[] PredictRaw(ReadOnlySpan<float> rawInput) => PredictRaw(rawInput, out _);
+
+    /// <summary>
+    /// Predice en escala original devolviendo las métricas independientes de esta llamada concreta.
+    /// </summary>
+    public float[] PredictRaw(ReadOnlySpan<float> rawInput, out NeuromorphicInferenceMetrics metrics)
     {
         int expectedIn = _layers[0].InputDim;
         int expectedOut = _layers[^1].OutputDim;
@@ -372,7 +420,7 @@ public sealed class NeuromorphicTrainableNetwork
         _rwLock.EnterReadLock();
         try
         {
-            pred = PredictInternal(scaled);
+            pred = PredictInternal(scaled, out metrics);
         }
         finally
         {
@@ -462,6 +510,9 @@ public sealed class NeuromorphicTrainableNetwork
 
         float totalMse = 0f;
         long batchSpikes = 0;
+        long batchLifFired = 0;
+        long batchPropagated = 0;
+        long batchSynapticOps = 0;
         int vecLen = Vector<float>.Count;
 
         foreach (var s in _scratchLocal.Values)
@@ -469,6 +520,9 @@ public sealed class NeuromorphicTrainableNetwork
             if (s.SpikesSum == 0 && s.MseSum == 0f) continue;
             totalMse += s.MseSum;
             batchSpikes += s.SpikesSum;
+            batchLifFired += s.LifFiredSum;
+            batchPropagated += s.PropagatedEventsSum;
+            batchSynapticOps += s.SynapticOpsSum;
 
             for (int l = 0; l < layerCount; l++)
             {
@@ -490,6 +544,9 @@ public sealed class NeuromorphicTrainableNetwork
         }
 
         Interlocked.Exchange(ref _lastSpikesProcessed, batchSpikes / batchSize);
+        Interlocked.Exchange(ref _lastLifFiredCount, batchLifFired / batchSize);
+        Interlocked.Exchange(ref _lastPropagatedEventCount, batchPropagated / batchSize);
+        Interlocked.Exchange(ref _lastSynapticOpsCount, batchSynapticOps / batchSize);
 
         _adamStep++;
         const float beta1 = 0.9f;
@@ -572,8 +629,11 @@ public sealed class NeuromorphicTrainableNetwork
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void ProcessSample(float[] input, float[] target, float stdpRate, ThreadScratch scratch)
     {
-        long spikes = ForwardFast(input, scratch);
+        long spikes = ForwardFast(input, scratch, out var sampleMetrics);
         scratch.SpikesSum += spikes;
+        scratch.LifFiredSum += sampleMetrics.LifFiredCount;
+        scratch.PropagatedEventsSum += sampleMetrics.PropagatedEventCount;
+        scratch.SynapticOpsSum += sampleMetrics.SynapticOpsCount;
 
         int layerCount = _layers.Count;
         float[] pred = scratch.LayerActs[layerCount];
@@ -697,7 +757,7 @@ public sealed class NeuromorphicTrainableNetwork
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private long ForwardFast(ReadOnlySpan<float> input, ThreadScratch scratch)
+    private long ForwardFast(ReadOnlySpan<float> input, ThreadScratch scratch, out NeuromorphicInferenceMetrics metrics)
     {
         int layerCount = _layers.Count;
         float[] inputBuf = scratch.LayerActs[0];
@@ -726,6 +786,9 @@ public sealed class NeuromorphicTrainableNetwork
 
         if (currentSpikeCount > 1) SortSpikesInline(spikeBuf0, currentSpikeCount);
         long totalSpikes = currentSpikeCount;
+        long lifFiredCount = 0;
+        long propagatedEventCount = currentSpikeCount;
+        long synapticOpsCount = 0;
 
         Spike[] currentSpikes = spikeBuf0;
         float[] currentValues = inputBuf;
@@ -766,6 +829,7 @@ public sealed class NeuromorphicTrainableNetwork
 
                 float val = currentValues[pre];
                 int[] targets = layer.ConnectedTargets[pre];
+                synapticOpsCount += targets.Length;
 
                 for (int tIdx = 0; tIdx < targets.Length; tIdx++)
                 {
@@ -816,7 +880,11 @@ public sealed class NeuromorphicTrainableNetwork
                         times[j] = timeWindow;
                     }
 
-                    if (fired[j]) totalSpikes++;
+                    if (fired[j])
+                    {
+                        totalSpikes++;
+                        lifFiredCount++;
+                    }
 
                     float a = fired[j]
                         ? (z > 0f ? z : 0.1f * z)
@@ -834,11 +902,15 @@ public sealed class NeuromorphicTrainableNetwork
             if (!isOutputLayer && nextSpikeCount > 1)
                 SortSpikesInline(nextSpikes, nextSpikeCount);
 
+            if (!isOutputLayer)
+                propagatedEventCount += nextSpikeCount;
+
             currentSpikes = nextSpikes;
             currentSpikeCount = nextSpikeCount;
             currentValues = act;
         }
 
+        metrics = new NeuromorphicInferenceMetrics(lifFiredCount, propagatedEventCount, synapticOpsCount);
         return totalSpikes;
     }
 }

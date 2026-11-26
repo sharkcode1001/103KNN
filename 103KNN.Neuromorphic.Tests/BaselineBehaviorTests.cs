@@ -2,10 +2,11 @@ using System;
 using System.IO;
 using _103KNN.Neuromorphic.Training;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace _103KNN.Neuromorphic.Tests;
 
-public class BaselineBehaviorTests
+public class BaselineBehaviorTests(ITestOutputHelper output)
 {
     private static NeuromorphicLayerMap[] CreateXorTopology() =>
     [
@@ -83,5 +84,29 @@ public class BaselineBehaviorTests
         {
             if (File.Exists(tempFile)) File.Delete(tempFile);
         }
+    }
+
+    [Fact]
+    public void NumericalReference_MatchesMasterBaseline()
+    {
+        var net = new NeuromorphicTrainableNetwork(CreateXorTopology(), seed: 103);
+        float initPred = net.Predict([0.25f, 0.75f])[0];
+        long initSpikes = net.LastSpikesProcessed;
+
+        float[][] inputs = [[0f, 0f], [0f, 1f], [1f, 0f], [1f, 1f]];
+        float[][] targets = [[0f], [1f], [1f], [0f]];
+
+        float mse50 = 0f;
+        for (int epoch = 0; epoch < 50; epoch++)
+            mse50 = net.TrainStep(inputs, targets, learningRate: 0.01f);
+        long trainSpikes = net.LastSpikesProcessed;
+        float finalPred = net.Predict([1f, 0f])[0];
+
+        output.WriteLine($"REF: initPred={initPred:R} initSpikes={initSpikes} mse50={mse50:R} trainSpikes={trainSpikes} finalPred={finalPred:R}");
+        Assert.Equal(0.4690226f, initPred, precision: 6);
+        Assert.Equal(3L, initSpikes);
+        Assert.Equal(0.15155157f, mse50, precision: 6);
+        Assert.Equal(4L, trainSpikes);
+        Assert.Equal(0.6619006f, finalPred, precision: 6);
     }
 }
