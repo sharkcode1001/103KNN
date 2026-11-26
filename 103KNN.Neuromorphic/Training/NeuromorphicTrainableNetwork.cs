@@ -223,6 +223,7 @@ public sealed class NeuromorphicTrainableNetwork
     private readonly float[][] _totalGradB;
     private readonly ReaderWriterLockSlim _rwLock = new(LockRecursionPolicy.NoRecursion);
     private int _adamStep;
+    internal int AdamStep { get => _adamStep; set => _adamStep = value; }
     private long _lastSpikesProcessed;
     private long _lastLifFiredCount;
     private long _lastPropagatedEventCount;
@@ -754,8 +755,8 @@ public sealed class NeuromorphicTrainableNetwork
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static float ComputeTimeDecay(float dt, float decay, float logDecay)
     {
+        if (dt <= 0f || decay >= 1f) return 1f;
         if (decay <= 0f) return 0f;
-        if (decay >= 1f) return 1f;
         return MathF.Exp(dt * logDecay);
     }
 
@@ -802,6 +803,11 @@ public sealed class NeuromorphicTrainableNetwork
         for (int i = 0; i < input.Length; i++)
         {
             float val = inputBuf[i];
+            if (val == 0f)
+            {
+                inputTimes[i] = float.PositiveInfinity;
+                continue;
+            }
             float normalized = Math.Clamp(MathF.Abs(val) / maxVal, 0f, 1f);
             float t = timeWindow * (1.0f - normalized);
             inputTimes[i] = t;

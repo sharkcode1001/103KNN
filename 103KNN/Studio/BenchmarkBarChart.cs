@@ -17,7 +17,12 @@ public sealed class BenchmarkResultItem
     public double TotalMs { get; set; }
     public double MsPerEpoch { get; set; }
     public double InferenceUsPerSample { get; set; }
+    public double PureInferenceUsPerSample { get; set; }
     public long OpsOrSpikes { get; set; }
+    public bool IsNeuromorphic { get; set; }
+    public long LifFiredCount { get; set; }
+    public long PropagatedEventCount { get; set; }
+    public long SynapticOpsCount { get; set; }
     public string Status { get; set; } = "";
 
     public string FinalMseDisplay => $"{FinalMse:F6}";
@@ -25,7 +30,10 @@ public sealed class BenchmarkResultItem
     public string TotalMsDisplay => $"{TotalMs:F1} ms";
     public string MsPerEpochDisplay => $"{MsPerEpoch:F2} ms";
     public string InferenceDisplay => $"{InferenceUsPerSample:F1} µs";
-    public string OpsDisplay => $"{OpsOrSpikes:N0}";
+    public string PureInferenceDisplay => $"{PureInferenceUsPerSample:F1} µs";
+    public string OpsDisplay => IsNeuromorphic
+        ? $"LIF:{LifFiredCount:N0} | Ev:{PropagatedEventCount:N0} | Syn:{SynapticOpsCount:N0}"
+        : $"{OpsOrSpikes:N0}";
 }
 
 /// <summary>

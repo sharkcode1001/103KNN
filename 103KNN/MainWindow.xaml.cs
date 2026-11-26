@@ -197,6 +197,7 @@ public partial class MainWindow : Window
         LblBenchMaxEpochs.Text = en ? "Max Epochs per Model" : "Máximo de Épocas por Modelo";
         LblBenchTargetMse.Text = en ? "Target Error (MSE)" : "Error Objetivo (MSE)";
         BtnRunBenchmark.Content = en ? "▶ Run Benchmark" : "▶ Ejecutar Comparativa";
+        BtnCopyBenchmark.Content = en ? "📋 Copy Report" : "📋 Copiar Reporte";
 
         TxtActiveModelBadge.Text = FormatArchName(SelectedArchitecture);
         UpdateTopologyStats();
@@ -698,25 +699,66 @@ public partial class MainWindow : Window
                 }
 
                 float testMse = float.NaN;
-                var infSw = Stopwatch.StartNew();
-                int evalCount = 0;
+                double inferNormUs = 0;
+                double inferPureUs = 0;
+                long lifSum = 0;
+                long evSum = 0;
+                long synSum = 0;
+                int pureCount = 0;
+
                 await Task.Run(() =>
                 {
+                    // 1. Evaluate Test MSE outside latency timers (also acts as JIT/Torch warmup)
                     testMse = benchEngine.EvaluateNormalizedMse(evalInputs, evalTargets);
+
+                    // 2. End-to-end single-sample inference (includes Min/Max normalization + denormalization)
+                    int evalCount = 0;
+                    var infSw = Stopwatch.StartNew();
                     for (int i = 0; i < evalInputs.Length; i++)
                     {
                         var pred = benchEngine.Predict(evalInputs[i]);
                         if (pred.Success) evalCount++;
                     }
+                    infSw.Stop();
+                    inferNormUs = evalCount > 0 ? infSw.Elapsed.TotalMicroseconds / evalCount : 0;
+
+                    // 3. Pure single-sample inference (pre-normalized inputs, no scaling overhead)
+                    var normEval = new float[evalInputs.Length][];
+                    for (int i = 0; i < evalInputs.Length; i++)
+                        normEval[i] = benchEngine.NormalizeInput(evalInputs[i]);
+
+                    var pureSw = Stopwatch.StartNew();
+                    for (int i = 0; i < normEval.Length; i++)
+                    {
+                        if (benchEngine.PredictNormalized(normEval[i]))
+                        {
+                            pureCount++;
+                            if (arch == NetworkArchitectureType.Neuromorphic)
+                            {
+                                lifSum += benchEngine.LastLifFiredCount;
+                                evSum += benchEngine.LastPropagatedEventCount;
+                                synSum += benchEngine.LastSynapticOpsCount;
+                            }
+                        }
+                    }
+                    pureSw.Stop();
+                    inferPureUs = pureCount > 0 ? pureSw.Elapsed.TotalMicroseconds / pureCount : 0;
                 });
-                infSw.Stop();
 
                 item.FinalMse = benchEngine.CurrentMSE;
                 item.TestMse = float.IsNaN(testMse) ? null : testMse;
                 item.EpochsRun = benchEngine.CurrentEpoch;
                 item.TotalMs = sw.Elapsed.TotalMilliseconds;
                 item.MsPerEpoch = item.EpochsRun > 0 ? item.TotalMs / item.EpochsRun : item.TotalMs;
-                item.InferenceUsPerSample = evalCount > 0 ? infSw.Elapsed.TotalMicroseconds / evalCount : 0;
+                item.InferenceUsPerSample = inferNormUs;
+                item.PureInferenceUsPerSample = inferPureUs;
+                item.IsNeuromorphic = arch == NetworkArchitectureType.Neuromorphic;
+                if (item.IsNeuromorphic && pureCount > 0)
+                {
+                    item.LifFiredCount = lifSum / pureCount;
+                    item.PropagatedEventCount = evSum / pureCount;
+                    item.SynapticOpsCount = synSum / pureCount;
+                }
                 item.OpsOrSpikes = benchEngine.LastOpsOrSpikes;
                 item.Status = item.FinalMse <= targetMse
                     ? (_isEnglish ? "Target reached" : "Objetivo alcanzado")
@@ -748,6 +790,38 @@ public partial class MainWindow : Window
     }
 
     private void BtnStopBenchmark_Click(object sender, RoutedEventArgs e) => _benchCts?.Cancel();
+
+    private void BtnCopyBenchmark_Click(object sender, RoutedEventArgs e)
+    {
+        if (_benchmarkResults.Count == 0)
+        {
+            MessageBox.Show(
+                _isEnglish ? "Run a benchmark first before copying the report." : "Ejecuta primero una comparativa antes de copiar el reporte.",
+                "103KNN Neural Studio",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("# 103KNN Neural Studio — Benchmark Report");
+        sb.AppendLine($"- **Timestamp:** {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        sb.AppendLine($"- **OS / Runtime:** {Environment.OSVersion} | .NET {Environment.Version} | CPU Cores: {Environment.ProcessorCount}");
+        sb.AppendLine($"- **{LblBenchTopology.Text}**");
+        sb.AppendLine($"- **{LblBenchDataset.Text}**");
+        sb.AppendLine($"- **Parameters:** Max Epochs = `{TxtBenchEpochs.Text}`, Target MSE = `{TxtBenchTargetError.Text}`, Learning Rate = `{TxtLearningRate.Text}`, Batch Size = `{TxtBatchSize.Text}`, 80/20 Split = `{(ChkBenchTrainTestSplit.IsChecked == true)}`");
+        sb.AppendLine();
+        sb.AppendLine("| Architecture | Train MSE | Test MSE | Epochs | Total Time | ms / Epoch | Infer (Norm µs) | Pure Infer (µs) | Ops / SNN Metrics | Result |");
+        sb.AppendLine("|---|---:|---:|---:|---:|---:|---:|---:|---|---|");
+
+        foreach (var r in _benchmarkResults)
+        {
+            sb.AppendLine($"| {r.Architecture} | {r.FinalMseDisplay} | {r.TestMseDisplay} | {r.EpochsRun} | {r.TotalMsDisplay} | {r.MsPerEpochDisplay} | {r.InferenceDisplay} | {r.PureInferenceDisplay} | {r.OpsDisplay} | {r.Status} |");
+        }
+
+        Clipboard.SetText(sb.ToString());
+        BtnCopyBenchmark.Content = _isEnglish ? "✓ Copied!" : "✓ ¡Copiado!";
+    }
 
     private void UpdateDatasetLabels()
     {

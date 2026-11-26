@@ -58,6 +58,9 @@ public sealed class ModelTrainerEngine : IDisposable
     public long CurrentEpoch { get; private set; }
     public float CurrentMSE { get; private set; }
     public long LastOpsOrSpikes { get; private set; }
+    public long LastLifFiredCount { get; private set; }
+    public long LastPropagatedEventCount { get; private set; }
+    public long LastSynapticOpsCount { get; private set; }
     public int SampleCount => _rawInputs?.Length ?? 0;
     public float[][]? RawInputs => _rawInputs;
     public float[][]? RawTargets => _rawTargets;
@@ -349,6 +352,26 @@ public sealed class ModelTrainerEngine : IDisposable
         return evaluated > 0 ? (float)(totalSqErr / (evaluated * outDim)) : float.NaN;
     }
 
+    public float[] NormalizeInput(float[] rawInput)
+    {
+        var input = (float[])rawInput.Clone();
+        if (_minIn != null && _maxIn != null)
+        {
+            for (int i = 0; i < input.Length && i < _minIn.Length; i++)
+            {
+                float range = _maxIn[i] - _minIn[i];
+                input[i] = range == 0 ? 0f : (input[i] - _minIn[i]) / range;
+            }
+        }
+        return input;
+    }
+
+    public bool PredictNormalized(float[] normalizedInput)
+    {
+        if (Maps.Count == 0 || normalizedInput.Length != Maps[0].SourceSize) return false;
+        return PredictNormalizedCore(normalizedInput, notifyProgress: false) != null;
+    }
+
     public PredictionResultDto Predict(float[] rawInput)
     {
         try
@@ -358,105 +381,10 @@ public sealed class ModelTrainerEngine : IDisposable
             if (rawInput.Length != inSize)
                 return PredictionResultDto.Fail($"Se esperaban {inSize} valores, se recibieron {rawInput.Length}.");
 
-            var input = (float[])rawInput.Clone();
-            if (_minIn != null && _maxIn != null)
-            {
-                for (int i = 0; i < input.Length; i++)
-                {
-                    float range = _maxIn[i] - _minIn[i];
-                    input[i] = range == 0 ? 0f : (input[i] - _minIn[i]) / range;
-                }
-            }
-
-            float[] pred;
-            switch (Architecture)
-            {
-                case NetworkArchitectureType.Nowral:
-                    if (_nowralNet == null) return PredictionResultDto.Fail("Red Nowral no inicializada.");
-                    _nowralNet.eval();
-                    using (var tIn = torch.tensor(input, new long[] { 1, input.Length }, dtype: ScalarType.Float32))
-                    using (var tOut = _nowralNet.forward(tIn))
-                        pred = tOut.data<float>().ToArray();
-                    break;
-
-                case NetworkArchitectureType.NewNow:
-                    if (_newNowNet == null) return PredictionResultDto.Fail("Red NewNow no inicializada.");
-                    _newNowNet.eval();
-                    using (var scope = torch.NewDisposeScope())
-                    {
-                        var tIn = torch.tensor(input, ScalarType.Float32).view(1, -1);
-                        var tOut = _newNowNet.forward(tIn);
-                        pred = tOut.data<float>().ToArray();
-                    }
-                    break;
-
-                case NetworkArchitectureType.LibQuid:
-                    if (_libQuidNet == null) return PredictionResultDto.Fail("Red LibQuid no inicializada.");
-                    _liquidPredictionBuffer.Enqueue(input);
-                    if (_liquidPredictionBuffer.Count > LiquidWindowSize) _liquidPredictionBuffer.Dequeue();
-                    if (_liquidPredictionBuffer.Count < LiquidWindowSize)
-                        return PredictionResultDto.Fail($"Buffer temporal: {_liquidPredictionBuffer.Count}/{LiquidWindowSize} pasos acumulados.");
-
-                    var seqData = _liquidPredictionBuffer.SelectMany(x => x).ToArray();
-                    using (var scope = torch.NewDisposeScope())
-                    {
-                        using var tIn = torch.tensor(seqData, new long[] { 1, LiquidWindowSize, inSize }).to(ScalarType.Float32);
-                        using var tOut = _libQuidNet.forward(tIn);
-                        pred = tOut.data<float>().ToArray();
-                    }
-                    break;
-
-                case NetworkArchitectureType.Neuromorphic:
-                    if (_neuroNet == null) return PredictionResultDto.Fail("Red Neuromórfica no inicializada.");
-                    pred = _neuroNet.Predict(input);
-                    LastOpsOrSpikes = _neuroNet.LastSpikesProcessed;
-                    OnProgressUpdated?.Invoke();
-                    break;
-
-                case NetworkArchitectureType.FastTree:
-                case NetworkArchitectureType.FastForest:
-                    if (_treeEnsemble == null) return PredictionResultDto.Fail("Modelo tabular no inicializado.");
-                    pred = _treeEnsemble.Predict(input);
-                    break;
-
-                case NetworkArchitectureType.StandardMlp:
-                    if (_stdMlpNet == null) return PredictionResultDto.Fail("Red Standard MLP no inicializada.");
-                    _stdMlpNet.eval();
-                    using (var scope = torch.NewDisposeScope())
-                    {
-                        var tIn = torch.tensor(input, ScalarType.Float32).view(1, -1);
-                        pred = _stdMlpNet.forward(tIn).data<float>().ToArray();
-                    }
-                    break;
-
-                case NetworkArchitectureType.ResNetTabular:
-                    if (_resNetNet == null) return PredictionResultDto.Fail("Red ResNet-Tabular no inicializada.");
-                    _resNetNet.eval();
-                    using (var scope = torch.NewDisposeScope())
-                    {
-                        var tIn = torch.tensor(input, ScalarType.Float32).view(1, -1);
-                        pred = _resNetNet.forward(tIn).data<float>().ToArray();
-                    }
-                    break;
-
-                case NetworkArchitectureType.Lstm:
-                    if (_lstmNet == null) return PredictionResultDto.Fail("Red LSTM no inicializada.");
-                    _lstmPredictionBuffer.Enqueue(input);
-                    if (_lstmPredictionBuffer.Count > LiquidWindowSize) _lstmPredictionBuffer.Dequeue();
-                    if (_lstmPredictionBuffer.Count < LiquidWindowSize)
-                        return PredictionResultDto.Fail($"Buffer LSTM: {_lstmPredictionBuffer.Count}/{LiquidWindowSize} pasos.");
-                    var lstmSeq = _lstmPredictionBuffer.SelectMany(x => x).ToArray();
-                    _lstmNet.eval();
-                    using (var scope = torch.NewDisposeScope())
-                    {
-                        var tIn = torch.tensor(lstmSeq, new long[] { 1, LiquidWindowSize, inSize }).to(ScalarType.Float32);
-                        pred = _lstmNet.forward(tIn).data<float>().ToArray();
-                    }
-                    break;
-
-                default:
-                    return PredictionResultDto.Fail("Arquitectura desconocida.");
-            }
+            var input = NormalizeInput(rawInput);
+            float[]? pred = PredictNormalizedCore(input, notifyProgress: true, out string? errorMsg);
+            if (pred == null)
+                return PredictionResultDto.Fail(errorMsg ?? "Error en predicción.");
 
             if (_minOut != null && _maxOut != null)
             {
@@ -473,6 +401,115 @@ public sealed class ModelTrainerEngine : IDisposable
         {
             return PredictionResultDto.Fail(ex.Message);
         }
+    }
+
+    private float[]? PredictNormalizedCore(float[] input, bool notifyProgress) =>
+        PredictNormalizedCore(input, notifyProgress, out _);
+
+    private float[]? PredictNormalizedCore(float[] input, bool notifyProgress, out string? errorMsg)
+    {
+        errorMsg = null;
+        int inSize = Maps[0].SourceSize;
+        float[] pred;
+        switch (Architecture)
+        {
+            case NetworkArchitectureType.Nowral:
+                if (_nowralNet == null) { errorMsg = "Red Nowral no inicializada."; return null; }
+                _nowralNet.eval();
+                using (var tIn = torch.tensor(input, new long[] { 1, input.Length }, dtype: ScalarType.Float32))
+                using (var tOut = _nowralNet.forward(tIn))
+                    pred = tOut.data<float>().ToArray();
+                break;
+
+            case NetworkArchitectureType.NewNow:
+                if (_newNowNet == null) { errorMsg = "Red NewNow no inicializada."; return null; }
+                _newNowNet.eval();
+                using (var scope = torch.NewDisposeScope())
+                {
+                    var tIn = torch.tensor(input, ScalarType.Float32).view(1, -1);
+                    var tOut = _newNowNet.forward(tIn);
+                    pred = tOut.data<float>().ToArray();
+                }
+                break;
+
+            case NetworkArchitectureType.LibQuid:
+                if (_libQuidNet == null) { errorMsg = "Red LibQuid no inicializada."; return null; }
+                _liquidPredictionBuffer.Enqueue(input);
+                if (_liquidPredictionBuffer.Count > LiquidWindowSize) _liquidPredictionBuffer.Dequeue();
+                if (_liquidPredictionBuffer.Count < LiquidWindowSize)
+                {
+                    errorMsg = $"Buffer temporal: {_liquidPredictionBuffer.Count}/{LiquidWindowSize} pasos acumulados.";
+                    return null;
+                }
+
+                var seqData = _liquidPredictionBuffer.SelectMany(x => x).ToArray();
+                using (var scope = torch.NewDisposeScope())
+                {
+                    using var tIn = torch.tensor(seqData, new long[] { 1, LiquidWindowSize, inSize }).to(ScalarType.Float32);
+                    using var tOut = _libQuidNet.forward(tIn);
+                    pred = tOut.data<float>().ToArray();
+                }
+                break;
+
+            case NetworkArchitectureType.Neuromorphic:
+                if (_neuroNet == null) { errorMsg = "Red Neuromórfica no inicializada."; return null; }
+                pred = _neuroNet.Predict(input, out var neuroMetrics);
+                LastOpsOrSpikes = _neuroNet.LastSpikesProcessed;
+                LastLifFiredCount = neuroMetrics.LifFiredCount;
+                LastPropagatedEventCount = neuroMetrics.PropagatedEventCount;
+                LastSynapticOpsCount = neuroMetrics.SynapticOpsCount;
+                if (notifyProgress) OnProgressUpdated?.Invoke();
+                break;
+
+            case NetworkArchitectureType.FastTree:
+            case NetworkArchitectureType.FastForest:
+                if (_treeEnsemble == null) { errorMsg = "Modelo tabular no inicializado."; return null; }
+                pred = _treeEnsemble.Predict(input);
+                break;
+
+            case NetworkArchitectureType.StandardMlp:
+                if (_stdMlpNet == null) { errorMsg = "Red Standard MLP no inicializada."; return null; }
+                _stdMlpNet.eval();
+                using (var scope = torch.NewDisposeScope())
+                {
+                    var tIn = torch.tensor(input, ScalarType.Float32).view(1, -1);
+                    pred = _stdMlpNet.forward(tIn).data<float>().ToArray();
+                }
+                break;
+
+            case NetworkArchitectureType.ResNetTabular:
+                if (_resNetNet == null) { errorMsg = "Red ResNet-Tabular no inicializada."; return null; }
+                _resNetNet.eval();
+                using (var scope = torch.NewDisposeScope())
+                {
+                    var tIn = torch.tensor(input, ScalarType.Float32).view(1, -1);
+                    pred = _resNetNet.forward(tIn).data<float>().ToArray();
+                }
+                break;
+
+            case NetworkArchitectureType.Lstm:
+                if (_lstmNet == null) { errorMsg = "Red LSTM no inicializada."; return null; }
+                _lstmPredictionBuffer.Enqueue(input);
+                if (_lstmPredictionBuffer.Count > LiquidWindowSize) _lstmPredictionBuffer.Dequeue();
+                if (_lstmPredictionBuffer.Count < LiquidWindowSize)
+                {
+                    errorMsg = $"Buffer LSTM: {_lstmPredictionBuffer.Count}/{LiquidWindowSize} pasos.";
+                    return null;
+                }
+                var lstmSeq = _lstmPredictionBuffer.SelectMany(x => x).ToArray();
+                _lstmNet.eval();
+                using (var scope = torch.NewDisposeScope())
+                {
+                    var tIn = torch.tensor(lstmSeq, new long[] { 1, LiquidWindowSize, inSize }).to(ScalarType.Float32);
+                    pred = _lstmNet.forward(tIn).data<float>().ToArray();
+                }
+                break;
+
+            default:
+                errorMsg = "Arquitectura desconocida.";
+                return null;
+        }
+        return pred;
     }
 
     public void SaveModel(string basePath)

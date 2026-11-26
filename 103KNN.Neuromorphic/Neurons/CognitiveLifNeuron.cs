@@ -14,6 +14,7 @@ public sealed class CognitiveLifNeuron
     private float _voltage;
     private float _adaptiveThreshold;
     private float _firstSpikeTime;
+    private float _lastTimestamp;
     private int _spikesFiredCount;
     private bool _hasFiredInEpisode;
 
@@ -23,23 +24,45 @@ public sealed class CognitiveLifNeuron
         _config = config ?? new CognitiveConfig();
         _adaptiveThreshold = _config.BaseThreshold;
         _firstSpikeTime = float.PositiveInfinity;
+        _lastTimestamp = 0.0f;
     }
 
     public int NeuronId => _neuronId;
     public float Voltage => _voltage;
     public float Threshold => _adaptiveThreshold;
     public float FirstSpikeTime => _firstSpikeTime;
+    public float LastTimestamp => _lastTimestamp;
     public int SpikesFiredCount => _spikesFiredCount;
     public bool HasFiredInEpisode => _hasFiredInEpisode;
 
+    private static float ComputeTimeDecay(float dt, float decay)
+    {
+        if (dt <= 0.0f || decay >= 1.0f) return 1.0f;
+        if (decay <= 0.0f) return 0.0f;
+        return MathF.Exp(dt * MathF.Log(decay));
+    }
+
     /// <summary>
-    /// Integra una corriente sináptica entrante en el instante especificado.
-    /// Retorna true si la neurona dispara un spike.
+    /// Integra una corriente sináptica entrante en el instante especificado usando decaimiento exponencial continuo ($\lambda^{\Delta t}$).
+    /// Para $\Delta t = 0$, el factor de decaimiento es exactamente $1.0$.
     /// </summary>
     public bool Integrate(float synapticCurrent, float timestamp)
     {
-        // Integración con decaimiento
-        _voltage = (_voltage * _config.MembraneDecay) + synapticCurrent;
+        if (!float.IsFinite(synapticCurrent))
+            throw new ArgumentOutOfRangeException(nameof(synapticCurrent), synapticCurrent, "La corriente sináptica debe ser finita.");
+        if (!float.IsFinite(timestamp))
+            throw new ArgumentOutOfRangeException(nameof(timestamp), timestamp, "El timestamp debe ser finito.");
+
+        float dt = MathF.Max(0.0f, timestamp - _lastTimestamp);
+        if (dt > 0.0f)
+        {
+            _voltage *= ComputeTimeDecay(dt, _config.MembraneDecay);
+            _adaptiveThreshold = _config.BaseThreshold +
+                                 (_adaptiveThreshold - _config.BaseThreshold) * ComputeTimeDecay(dt, _config.ThresholdDecay);
+            _lastTimestamp = timestamp;
+        }
+
+        _voltage += synapticCurrent;
 
         if (_voltage >= _adaptiveThreshold)
         {
@@ -51,14 +74,39 @@ public sealed class CognitiveLifNeuron
                 _firstSpikeTime = timestamp;
             }
 
-            // Reset de voltaje con hiperpolarización proporcional
             _voltage = 0.0f;
-
-            // Adaptación homeostática del umbral (refractariedad)
             _adaptiveThreshold += _config.ThresholdAdaptationRate;
             return true;
         }
 
+        return false;
+    }
+
+    /// <summary>
+    /// Evalúa el cierre de la ventana temporal aplicando el decaimiento restante hasta <paramref name="timeWindow"/> y el sesgo.
+    /// </summary>
+    public bool IntegrateEndOfWindow(float timeWindow, float bias = 0.0f)
+    {
+        if (!float.IsFinite(timeWindow))
+            throw new ArgumentOutOfRangeException(nameof(timeWindow), timeWindow, "TimeWindow debe ser finito.");
+        if (!float.IsFinite(bias))
+            throw new ArgumentOutOfRangeException(nameof(bias), bias, "Bias debe ser finito.");
+
+        float dtEnd = MathF.Max(0.0f, timeWindow - _lastTimestamp);
+        float endLeak = ComputeTimeDecay(dtEnd, _config.MembraneDecay);
+        float v = (_voltage * endLeak) + bias;
+        _lastTimestamp = MathF.Max(_lastTimestamp, timeWindow);
+
+        if (v >= _adaptiveThreshold && !_hasFiredInEpisode)
+        {
+            _spikesFiredCount++;
+            _hasFiredInEpisode = true;
+            _firstSpikeTime = timeWindow;
+            _voltage = 0.0f;
+            return true;
+        }
+
+        _voltage = v;
         return false;
     }
 
@@ -95,6 +143,7 @@ public sealed class CognitiveLifNeuron
         _voltage = 0.0f;
         _adaptiveThreshold = _config.BaseThreshold;
         _firstSpikeTime = float.PositiveInfinity;
+        _lastTimestamp = 0.0f;
         _spikesFiredCount = 0;
         _hasFiredInEpisode = false;
     }

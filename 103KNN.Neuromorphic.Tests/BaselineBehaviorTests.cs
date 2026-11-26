@@ -105,8 +105,8 @@ public class BaselineBehaviorTests(ITestOutputHelper output)
         output.WriteLine($"REF: initPred={initPred:R} initSpikes={initSpikes} mse50={mse50:R} trainSpikes={trainSpikes} finalPred={finalPred:R}");
         Assert.Equal(0.4690226f, initPred, precision: 6);
         Assert.Equal(3L, initSpikes);
-        Assert.Equal(0.15155157f, mse50, precision: 6);
-        Assert.Equal(4L, trainSpikes);
-        Assert.Equal(0.6619006f, finalPred, precision: 6);
+        Assert.Equal(0.14962807f, mse50, precision: 6);
+        Assert.Equal(3L, trainSpikes);
+        Assert.Equal(0.66364723f, finalPred, precision: 6);
     }
 }

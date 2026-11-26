@@ -27,7 +27,7 @@ public enum OptimizerType
 
 public class GlobalNetworkSettings
 {
-    public string Structure { get; set; } = "2 32 8 1";
+    public string Structure { get; set; } = "8 32 16 1";
     public ActivationType Activation { get; set; } = ActivationType.LeakyReLU;
 
     public int InputCount => ParseStructure().FirstOrDefault();
