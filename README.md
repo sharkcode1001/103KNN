@@ -17,7 +17,7 @@
   - Visual topology canvas with smooth Bezier connections; click any two adjacent neurons to enable or disable individual synapses.
   - Customize layer structure, activation functions (`ReLU`, `Sigmoid`, `LeakyReLU`), learning rate, batch size, optimizer (`Adam`, `SGD`, `RMSprop`), and STDP rate.
 - **Multi-Architecture Trainer & Live Evaluation:**
-  - Supports **103KNN Neuromorphic**, **Nowral (Static)**, **NewNow (Dynamic)**, and **LibQuid (Liquid ODE)**.
+  - Supports **9 architectures** in one unified workflow: **103KNN Neuromorphic**, **Nowral (Static)**, **NewNow (Dynamic)**, **LibQuid (Liquid ODE)**, **FastTree (GBDT)**, **FastForest (Random Forest)**, **Standard MLP (PyTorch)**, **ResNet-Tabular (Skip)**, and **LSTM (Recurrent)**.
   - Real-time MSE convergence chart, CSV & Parquet data loaders with automatic Min-Max normalization/denormalization, model persistence (`.json` / `.weights.bin`), and live manual inference.
 - **Side-by-Side Architecture Comparator:**
   - Evaluates multiple architectures on the exact same topology and dataset, measuring **Final MSE**, **Epochs**, **Total Training Time**, **ms/Epoch**, **Single-Sample Inference Latency (µs/sample)**, and **Ops / Spikes per sample**.
@@ -40,6 +40,7 @@ Tested on a non-linear 8-input, 4-output sinusoidal regression dataset (`240` sa
 - **7.3× faster single-sample inference** than `Nowral` and **5.0× faster** than `NewNow` (~42,300 inferences/sec on CPU).
 - **15.5× fewer operations** per sample (`35` sparse spike events vs. `544` dense operations).
 - **Only architecture** to reach the target `MSE <= 0.0001` on this non-linear task.
+- *(Note: This table reflects a standalone 3-architecture run at `max 4,000` epochs; see [docs/PAPER_EN.md](docs/PAPER_EN.md) for full 6- and 8-architecture runs including `FastTree`, `FastForest`, `Standard MLP`, and `ResNet-Tabular` at `3,000` and `2,000` epochs.)*
 
 ---
 
@@ -75,7 +76,7 @@ The `datasets/` folder includes 6 ready-to-use `.csv` files for testing both sta
    - Each row is parsed automatically (comma, semicolon, or tab separated; optional non-numeric header row is skipped).
    - The first `InputCount` columns are used as inputs and the remaining `OutputCount` columns as targets.
    - All inputs and targets are **Min-Max normalized to `[0, 1]`** during training, and **automatically denormalized** back to the original scale when running **Live Inference** (`Run Prediction`).
-3. **Train or Benchmark:** Start training to watch the real-time MSE curve, or run **Architecture Comparator** to compare **103KNN Neuromorphic**, **Nowral**, **NewNow**, and **LibQuid** on the exact same dataset.
+3. **Train or Benchmark:** Start training to watch the real-time MSE curve, or run **Architecture Comparator** to benchmark **103KNN Neuromorphic** against all 9 supported architectures (`Nowral`, `NewNow`, `LibQuid`, `FastTree`, `FastForest`, `Standard MLP`, `ResNet-Tabular`, and `LSTM`) on the exact same dataset.
 
 ---
 

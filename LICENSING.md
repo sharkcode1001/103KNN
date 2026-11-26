@@ -24,9 +24,13 @@ Except as expressly permitted under the GNU GPLv3, all rights are reserved. Any 
 
 ---
 
-## 4. Third-Party Dependencies
-- **`103KNN.Neuromorphic`**: 100% original C# code with **zero** third-party dependencies.
-- **`103KNN` (Desktop Studio)**: Uses `TorchSharp` and `ParquetSharp` under the **Apache License 2.0** (compatible with both GPLv3 and Commercial licensing).
+## 4. License Matrix & Third-Party Dependencies
+- **`103KNN.Neuromorphic`** (Core SNN Engine): 100% original C# code with **zero** third-party dependencies — Dual-licensed (GNU GPLv3 / Private Commercial License).
+- **`NowLib`, `Nowral`, `NewNow`, `LibQuid`** (Solution Modules): Original project modules — Dual-licensed (GNU GPLv3 / Private Commercial License); `Nowral`, `NewNow`, and `LibQuid` reference `TorchSharp`.
+- **`103KNN` (Desktop Studio)**: Dual-licensed (GNU GPLv3 / Private Commercial License), integrating the following third-party NuGet dependencies:
+  - **`TorchSharp`** (`0.105.2`): **MIT License** (`TorchSharp-cpu` bundles native `libtorch` binaries under **BSD-3-Clause**).
+  - **`Microsoft.ML` & `Microsoft.ML.FastTree`** (`4.0.2`): **MIT License**.
+  - **`ParquetSharp`** (`21.0.0`): **Apache License 2.0**.
 
 ---
 
