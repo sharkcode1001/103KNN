@@ -22,11 +22,23 @@ public sealed class NeuromorphicLayerMap
 
     public NeuromorphicLayerMap(int sourceSize, int targetSize, IEnumerable<(int Source, int Target)>? connections = null)
     {
+        if (sourceSize <= 0)
+            throw new ArgumentOutOfRangeException(nameof(sourceSize), sourceSize, "El tamaño de origen debe ser mayor que 0.");
+        if (targetSize <= 0)
+            throw new ArgumentOutOfRangeException(nameof(targetSize), targetSize, "El tamaño de destino debe ser mayor que 0.");
+
         SourceSize = sourceSize;
         TargetSize = targetSize;
         if (connections != null)
         {
-            Connections.AddRange(connections);
+            foreach (var conn in connections)
+            {
+                if (conn.Source < 0 || conn.Source >= sourceSize)
+                    throw new ArgumentOutOfRangeException(nameof(connections), conn.Source, $"Índice de origen {conn.Source} fuera de rango [0, {sourceSize}).");
+                if (conn.Target < 0 || conn.Target >= targetSize)
+                    throw new ArgumentOutOfRangeException(nameof(connections), conn.Target, $"Índice de destino {conn.Target} fuera de rango [0, {targetSize}).");
+                Connections.Add(conn);
+            }
         }
         else
         {
@@ -61,6 +73,12 @@ public sealed class NeuromorphicTrainableNetwork
 
         public SpikingLayerState(NeuromorphicLayerMap map, CognitiveConfig config, Random rng)
         {
+            ArgumentNullException.ThrowIfNull(map);
+            if (map.SourceSize <= 0)
+                throw new ArgumentOutOfRangeException(nameof(map), map.SourceSize, "SourceSize de la capa debe ser mayor que 0.");
+            if (map.TargetSize <= 0)
+                throw new ArgumentOutOfRangeException(nameof(map), map.TargetSize, "TargetSize de la capa debe ser mayor que 0.");
+
             InputDim = map.SourceSize;
             OutputDim = map.TargetSize;
             int total = OutputDim * InputDim;
@@ -79,15 +97,17 @@ public sealed class NeuromorphicTrainableNetwork
             int activeCount = 0;
             foreach (var (src, dst) in map.Connections)
             {
-                if (src >= 0 && src < InputDim && dst >= 0 && dst < OutputDim)
+                if (src < 0 || src >= InputDim)
+                    throw new ArgumentOutOfRangeException(nameof(map), src, $"Conexión inválida: origen {src} fuera de [0, {InputDim}).");
+                if (dst < 0 || dst >= OutputDim)
+                    throw new ArgumentOutOfRangeException(nameof(map), dst, $"Conexión inválida: destino {dst} fuera de [0, {OutputDim}).");
+
+                int idx = dst * InputDim + src;
+                if (!Mask[idx])
                 {
-                    int idx = dst * InputDim + src;
-                    if (!Mask[idx])
-                    {
-                        Mask[idx] = true;
-                        perSource[src].Add(dst);
-                        activeCount++;
-                    }
+                    Mask[idx] = true;
+                    perSource[src].Add(dst);
+                    activeCount++;
                 }
             }
 
@@ -181,12 +201,19 @@ public sealed class NeuromorphicTrainableNetwork
     private readonly ThreadLocal<ThreadScratch> _scratchLocal;
     private readonly float[][] _totalGradW;
     private readonly float[][] _totalGradB;
+    private readonly ReaderWriterLockSlim _rwLock = new(LockRecursionPolicy.NoRecursion);
     private int _adamStep;
+    private long _lastSpikesProcessed;
 
     public IReadOnlyList<SpikingLayerState> Layers => _layers;
     public IReadOnlyList<NeuromorphicLayerMap> Maps { get; }
     public CognitiveConfig Config => _config;
-    public long LastSpikesProcessed { get; private set; }
+
+    /// <summary>
+    /// Último conteo global de espigas registrado por el motor.
+    /// En llamadas concurrentes a <see cref="Predict"/>, refleja de forma atómica el último conteo completado.
+    /// </summary>
+    public long LastSpikesProcessed => Interlocked.Read(ref _lastSpikesProcessed);
     public float[]? MinIn { get; set; }
     public float[]? MaxIn { get; set; }
     public float[]? MinOut { get; set; }
@@ -197,8 +224,21 @@ public sealed class NeuromorphicTrainableNetwork
         CognitiveConfig? config = null,
         int seed = 103)
     {
-        if (maps == null || maps.Count == 0)
+        ArgumentNullException.ThrowIfNull(maps);
+        if (maps.Count == 0)
             throw new ArgumentException("La topología debe contener al menos una capa.", nameof(maps));
+
+        for (int i = 0; i < maps.Count; i++)
+        {
+            if (maps[i] == null)
+                throw new ArgumentNullException(nameof(maps), $"La capa en el índice {i} no puede ser nula.");
+            if (maps[i].SourceSize <= 0)
+                throw new ArgumentOutOfRangeException(nameof(maps), maps[i].SourceSize, $"SourceSize de la capa {i} debe ser mayor que 0.");
+            if (maps[i].TargetSize <= 0)
+                throw new ArgumentOutOfRangeException(nameof(maps), maps[i].TargetSize, $"TargetSize de la capa {i} debe ser mayor que 0.");
+            if (i > 0 && maps[i - 1].TargetSize != maps[i].SourceSize)
+                throw new ArgumentException($"Incompatibilidad de dimensiones entre capa {i - 1} (TargetSize={maps[i - 1].TargetSize}) y capa {i} (SourceSize={maps[i].SourceSize}).", nameof(maps));
+        }
 
         Maps = maps;
         _config = config ?? new CognitiveConfig
@@ -209,6 +249,7 @@ public sealed class NeuromorphicTrainableNetwork
             ThresholdAdaptationRate = 0.02f,
             TimeWindow = 1.0f
         };
+        ValidateConfig(_config);
 
         var rng = new Random(seed);
         foreach (var map in maps)
@@ -227,12 +268,73 @@ public sealed class NeuromorphicTrainableNetwork
         _scratchLocal = new ThreadLocal<ThreadScratch>(() => new ThreadScratch(_layers), trackAllValues: true);
     }
 
-    public float[] Predict(ReadOnlySpan<float> input)
+    private static void ValidateConfig(CognitiveConfig cfg)
+    {
+        if (!float.IsFinite(cfg.BaseThreshold) || cfg.BaseThreshold <= 0f)
+            throw new ArgumentOutOfRangeException(nameof(cfg.BaseThreshold), cfg.BaseThreshold, "BaseThreshold debe ser finito y mayor que 0.");
+        if (!float.IsFinite(cfg.MembraneDecay) || cfg.MembraneDecay < 0f || cfg.MembraneDecay > 1f)
+            throw new ArgumentOutOfRangeException(nameof(cfg.MembraneDecay), cfg.MembraneDecay, "MembraneDecay debe estar en [0, 1].");
+        if (!float.IsFinite(cfg.LateralInhibitionFactor) || cfg.LateralInhibitionFactor < 0f)
+            throw new ArgumentOutOfRangeException(nameof(cfg.LateralInhibitionFactor), cfg.LateralInhibitionFactor, "LateralInhibitionFactor debe ser finito y >= 0.");
+        if (!float.IsFinite(cfg.ThresholdAdaptationRate) || cfg.ThresholdAdaptationRate < 0f)
+            throw new ArgumentOutOfRangeException(nameof(cfg.ThresholdAdaptationRate), cfg.ThresholdAdaptationRate, "ThresholdAdaptationRate debe ser finito y >= 0.");
+        if (!float.IsFinite(cfg.ThresholdDecay) || cfg.ThresholdDecay < 0f || cfg.ThresholdDecay > 1f)
+            throw new ArgumentOutOfRangeException(nameof(cfg.ThresholdDecay), cfg.ThresholdDecay, "ThresholdDecay debe estar en [0, 1].");
+        if (cfg.MaxDeliberationSteps <= 0)
+            throw new ArgumentOutOfRangeException(nameof(cfg.MaxDeliberationSteps), cfg.MaxDeliberationSteps, "MaxDeliberationSteps debe ser mayor que 0.");
+        if (!float.IsFinite(cfg.EarlyExitConfidenceThreshold) || cfg.EarlyExitConfidenceThreshold < 0f)
+            throw new ArgumentOutOfRangeException(nameof(cfg.EarlyExitConfidenceThreshold), cfg.EarlyExitConfidenceThreshold, "EarlyExitConfidenceThreshold debe ser finito y >= 0.");
+        if (!float.IsFinite(cfg.TimeWindow) || cfg.TimeWindow <= 0f)
+            throw new ArgumentOutOfRangeException(nameof(cfg.TimeWindow), cfg.TimeWindow, "TimeWindow debe ser finito y mayor que 0.");
+    }
+
+    internal void ExecuteWithReadLock(Action action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        _rwLock.EnterReadLock();
+        try
+        {
+            action();
+        }
+        finally
+        {
+            _rwLock.ExitReadLock();
+        }
+    }
+
+    private static void ValidateFiniteValues(ReadOnlySpan<float> values, string paramName)
+    {
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (!float.IsFinite(values[i]))
+                throw new ArgumentOutOfRangeException(paramName, values[i], $"El elemento en el índice {i} contiene NaN o Infinito.");
+        }
+    }
+
+    private float[] PredictInternal(ReadOnlySpan<float> input)
     {
         var scratch = _scratchLocal.Value!;
         long spikes = ForwardFast(input, scratch);
-        LastSpikesProcessed = spikes;
+        Interlocked.Exchange(ref _lastSpikesProcessed, spikes);
         return (float[])scratch.LayerActs[_layers.Count].Clone();
+    }
+
+    public float[] Predict(ReadOnlySpan<float> input)
+    {
+        int expectedIn = _layers[0].InputDim;
+        if (input.Length != expectedIn)
+            throw new ArgumentException($"Dimensión de entrada inválida: se esperaban {expectedIn} valores y se recibieron {input.Length}.", nameof(input));
+        ValidateFiniteValues(input, nameof(input));
+
+        _rwLock.EnterReadLock();
+        try
+        {
+            return PredictInternal(input);
+        }
+        finally
+        {
+            _rwLock.ExitReadLock();
+        }
     }
 
     /// <summary>
@@ -240,20 +342,46 @@ public sealed class NeuromorphicTrainableNetwork
     /// </summary>
     public float[] PredictRaw(ReadOnlySpan<float> rawInput)
     {
+        int expectedIn = _layers[0].InputDim;
+        int expectedOut = _layers[^1].OutputDim;
+        if (rawInput.Length != expectedIn)
+            throw new ArgumentException($"Dimensión de entrada inválida: se esperaban {expectedIn} valores y se recibieron {rawInput.Length}.", nameof(rawInput));
+        ValidateFiniteValues(rawInput, nameof(rawInput));
+
+        if ((MinIn == null) != (MaxIn == null))
+            throw new InvalidOperationException("MinIn y MaxIn deben estar ambos definidos o ambos nulos.");
+        if (MinIn != null && (MinIn.Length != expectedIn || MaxIn!.Length != expectedIn))
+            throw new InvalidOperationException($"Las escalas MinIn/MaxIn deben tener longitud {expectedIn}.");
+
+        if ((MinOut == null) != (MaxOut == null))
+            throw new InvalidOperationException("MinOut y MaxOut deben estar ambos definidos o ambos nulos.");
+        if (MinOut != null && (MinOut.Length != expectedOut || MaxOut!.Length != expectedOut))
+            throw new InvalidOperationException($"Las escalas MinOut/MaxOut deben tener longitud {expectedOut}.");
+
         float[] scaled = rawInput.ToArray();
         if (MinIn != null && MaxIn != null)
         {
-            for (int i = 0; i < scaled.Length && i < MinIn.Length; i++)
+            for (int i = 0; i < expectedIn; i++)
             {
                 float range = MaxIn[i] - MinIn[i];
                 scaled[i] = range == 0f ? 0f : (scaled[i] - MinIn[i]) / range;
             }
         }
 
-        float[] pred = Predict(scaled);
+        float[] pred;
+        _rwLock.EnterReadLock();
+        try
+        {
+            pred = PredictInternal(scaled);
+        }
+        finally
+        {
+            _rwLock.ExitReadLock();
+        }
+
         if (MinOut != null && MaxOut != null)
         {
-            for (int k = 0; k < pred.Length && k < MinOut.Length; k++)
+            for (int k = 0; k < expectedOut; k++)
             {
                 float range = MaxOut[k] - MinOut[k];
                 pred[k] = (pred[k] * range) + MinOut[k];
@@ -264,9 +392,48 @@ public sealed class NeuromorphicTrainableNetwork
 
     public float TrainStep(float[][] batchInputs, float[][] batchTargets, float learningRate = 0.005f, float stdpRate = 0.002f)
     {
+        ArgumentNullException.ThrowIfNull(batchInputs);
+        ArgumentNullException.ThrowIfNull(batchTargets);
+        if (batchInputs.Length != batchTargets.Length)
+            throw new ArgumentException($"batchInputs ({batchInputs.Length}) y batchTargets ({batchTargets.Length}) deben tener la misma cantidad de muestras.");
+        if (!float.IsFinite(learningRate) || learningRate <= 0f)
+            throw new ArgumentOutOfRangeException(nameof(learningRate), learningRate, "learningRate debe ser finito y mayor que 0.");
+        if (!float.IsFinite(stdpRate) || stdpRate < 0f)
+            throw new ArgumentOutOfRangeException(nameof(stdpRate), stdpRate, "stdpRate debe ser finito y >= 0.");
+
         int batchSize = batchInputs.Length;
         if (batchSize == 0) return 0f;
 
+        int expectedIn = _layers[0].InputDim;
+        int expectedOut = _layers[^1].OutputDim;
+        for (int b = 0; b < batchSize; b++)
+        {
+            if (batchInputs[b] == null)
+                throw new ArgumentNullException(nameof(batchInputs), $"La muestra de entrada {b} es nula.");
+            if (batchTargets[b] == null)
+                throw new ArgumentNullException(nameof(batchTargets), $"La muestra objetivo {b} es nula.");
+            if (batchInputs[b].Length != expectedIn)
+                throw new ArgumentException($"La muestra de entrada {b} tiene {batchInputs[b].Length} valores; se esperaban {expectedIn}.", nameof(batchInputs));
+            if (batchTargets[b].Length != expectedOut)
+                throw new ArgumentException($"La muestra objetivo {b} tiene {batchTargets[b].Length} valores; se esperaban {expectedOut}.", nameof(batchTargets));
+            ValidateFiniteValues(batchInputs[b], nameof(batchInputs));
+            ValidateFiniteValues(batchTargets[b], nameof(batchTargets));
+        }
+
+        _rwLock.EnterWriteLock();
+        try
+        {
+            return TrainStepCore(batchInputs, batchTargets, learningRate, stdpRate);
+        }
+        finally
+        {
+            _rwLock.ExitWriteLock();
+        }
+    }
+
+    private float TrainStepCore(float[][] batchInputs, float[][] batchTargets, float learningRate, float stdpRate)
+    {
+        int batchSize = batchInputs.Length;
         int layerCount = _layers.Count;
         foreach (var s in _scratchLocal.Values)
             s.ClearGrads();
@@ -322,7 +489,7 @@ public sealed class NeuromorphicTrainableNetwork
             }
         }
 
-        LastSpikesProcessed = batchSpikes / batchSize;
+        Interlocked.Exchange(ref _lastSpikesProcessed, batchSpikes / batchSize);
 
         _adamStep++;
         const float beta1 = 0.9f;

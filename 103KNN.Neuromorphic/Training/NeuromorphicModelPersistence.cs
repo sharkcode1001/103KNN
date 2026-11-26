@@ -44,36 +44,41 @@ public static class NeuromorphicModelPersistence
         float[]? minOut = null,
         float[]? maxOut = null)
     {
-        var pkg = new NeuromorphicModelPackage
+        ArgumentNullException.ThrowIfNull(network);
+        NeuromorphicModelPackage pkg = null!;
+        network.ExecuteWithReadLock(() =>
         {
-            FormatVersion = FormatVersion,
-            Config = network.Config,
-            MinIn = minIn ?? network.MinIn,
-            MaxIn = maxIn ?? network.MaxIn,
-            MinOut = minOut ?? network.MinOut,
-            MaxOut = maxOut ?? network.MaxOut
-        };
-
-        for (int l = 0; l < network.Layers.Count; l++)
-        {
-            var layer = network.Layers[l];
-            var map = network.Maps[l];
-
-            var sLayer = new SerializedLayer
+            pkg = new NeuromorphicModelPackage
             {
-                SourceSize = layer.InputDim,
-                TargetSize = layer.OutputDim,
-                Biases = (float[])layer.Biases.Clone(),
-                Weights = (float[])layer.Weights.Clone()
+                FormatVersion = FormatVersion,
+                Config = network.Config,
+                MinIn = minIn ?? (float[]?)network.MinIn?.Clone(),
+                MaxIn = maxIn ?? (float[]?)network.MaxIn?.Clone(),
+                MinOut = minOut ?? (float[]?)network.MinOut?.Clone(),
+                MaxOut = maxOut ?? (float[]?)network.MaxOut?.Clone()
             };
 
-            foreach (var (src, dst) in map.Connections)
+            for (int l = 0; l < network.Layers.Count; l++)
             {
-                sLayer.Connections.Add(new SerializedConnection { Source = src, Target = dst });
-            }
+                var layer = network.Layers[l];
+                var map = network.Maps[l];
 
-            pkg.Layers.Add(sLayer);
-        }
+                var sLayer = new SerializedLayer
+                {
+                    SourceSize = layer.InputDim,
+                    TargetSize = layer.OutputDim,
+                    Biases = (float[])layer.Biases.Clone(),
+                    Weights = (float[])layer.Weights.Clone()
+                };
+
+                foreach (var (src, dst) in map.Connections)
+                {
+                    sLayer.Connections.Add(new SerializedConnection { Source = src, Target = dst });
+                }
+
+                pkg.Layers.Add(sLayer);
+            }
+        });
 
         string jsonPath = baseFilePath.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
             ? baseFilePath
