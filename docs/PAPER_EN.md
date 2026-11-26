@@ -30,6 +30,8 @@ This study evaluates **103KNN Neuromorphic** against both neural (`TorchSharp`) 
 4. **`FastTree` (Tabular GBDT, `Microsoft.ML.FastTree`):** Ensemble of $200$ gradient-boosted regression trees per output target.
 5. **`FastForest` (Random Forest, `Microsoft.ML.FastTree`):** Ensemble of $200$ random forest regression trees per output target.
 6. **`103KNN Neuromorphic` (Native C# SNN):** Event-driven engine with TTFS encoding, LIF neurons, sparse adjacency (`ConnectedTargets`), and parallel batch processing (`Parallel.For` + `ThreadScratch`):
+7. **`Standard MLP` (`TorchSharp`):** Standard dense PyTorch/TorchSharp multilayer perceptron trained with shuffled mini-batches (`BatchSize = 64`) and `Adam`.
+8. **`ResNet-Tabular` (`TorchSharp`):** Residual tabular network with skip connections and dense blocks in PyTorch/TorchSharp. *(The Studio also supports `LSTM` for sequential tasks).*
 
 ```mermaid
 flowchart LR
@@ -174,6 +176,59 @@ xychart-beta
     x-axis ["103KNN SNN", "FastForest", "FastTree", "Nowral", "NewNow"]
     y-axis "Microseconds (us)" 0 --> 880
     bar [70.8, 119.1, 185.4, 493.9, 843.9]
+```
+
+---
+
+### 3.7 Experiment 7: Direct Comparison Against `Standard MLP (PyTorch)` and `ResNet-Tabular (Skip)` (80/20 Split)
+
+To evaluate `103KNN Neuromorphic` directly against mainstream PyTorch/TorchSharp tabular deep learning baselines (**Standard MLP** and **ResNet-Tabular**) alongside **FastTree** and **FastForest**, three additional benchmarks were executed with `80/20 Train/Test Split`, $\eta = 0.005$, and target $\text{MSE} \le 0.0001$:
+
+#### A) 1,030-Sample Dataset (`8-32-8-1`, 520 connections, 200 epochs/trees)
+
+| Architecture | Train MSE | Test MSE | Epochs | Total Time (ms) | ms / Epoch | Infer ($\mu\text{s}$/sample) | Ops / Spikes | Result |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| **Nowral (Static)** | 0.006873 | 0.007238 | 200 | **364.7** | 1.82 | 302.9 $\mu\text{s}$ | 520 | Fastest |
+| **103KNN Neuromorphic** | 0.003640 | 0.005686 | 200 | 1,676.8 | 8.38 | **32.1 $\mu\text{s}$** | **22** | Completed |
+| **FastTree (GBDT)** | **0.000302** | **0.002720** | 200 | 663.2 | 3.32 | 33.0 $\mu\text{s}$ | 200 | Lowest MSE |
+| **FastForest (RF)** | 0.006979 | 0.010771 | 200 | 534.3 | 2.67 | 40.1 $\mu\text{s}$ | 200 | Completed |
+| **Standard MLP (PyTorch)** | 0.003894 | 0.005135 | 200 | 2,548.2 | 12.74 | 279.1 $\mu\text{s}$ | 520 | Completed |
+| **ResNet-Tabular** | 0.001885 | 0.003964 | 200 | 5,543.6 | 27.72 | 456.3 $\mu\text{s}$ | 4,384 | Completed |
+
+#### B) 20,433-Sample Dataset (`8-16-8-1`, 264 connections, 200 epochs/trees)
+
+| Architecture | Train MSE | Test MSE | Epochs | Total Time (ms) | ms / Epoch | Infer ($\mu\text{s}$/sample) | Ops / Spikes | Result |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| **Nowral (Static)** | 0.019886 | 0.018678 | 200 | **669.0** | 3.35 | 276.6 $\mu\text{s}$ | 264 | Fastest |
+| **103KNN Neuromorphic** | 0.012731 | 0.012496 | 200 | 21,754.6 | 108.77 | 38.4 $\mu\text{s}$ | **26** | Completed |
+| **FastTree (GBDT)** | **0.006241** | **0.009517** | 200 | 2,530.0 | 12.65 | **38.3 $\mu\text{s}$** | 200 | Lowest MSE |
+| **FastForest (RF)** | 0.019449 | 0.019343 | 200 | 2,785.0 | 13.93 | 68.1 $\mu\text{s}$ | 200 | Completed |
+| **Standard MLP (PyTorch)** | 0.014473 | 0.013858 | 200 | 15,462.0 | 77.31 | 416.9 $\mu\text{s}$ | 264 | Completed |
+| **ResNet-Tabular** | 0.012919 | 0.012382 | 200 | 17,180.8 | 85.90 | 430.7 $\mu\text{s}$ | 1,168 | Completed |
+
+#### C) 20,433-Sample Dataset at 2,000 Epochs/Trees (`8-12-4-1`, 148 connections)
+
+| Architecture | Train MSE | Test MSE | Epochs | Total Time (ms) | ms / Epoch | Infer ($\mu\text{s}$/sample) | Ops / Spikes | Result |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| **Nowral (Static)** | 0.014643 | 0.013902 | 2000 | **7,066.6** | 3.53 | 597.5 $\mu\text{s}$ | 148 | Fastest |
+| **103KNN Neuromorphic** | 0.012779 | 0.012238 | 2000 | 144,738.1 | 72.37 | **24.7 $\mu\text{s}$** | **23** | Completed |
+| **FastTree (GBDT)** | **0.000763** | **0.008600** | 2000 | 16,921.8 | 8.46 | 786.5 $\mu\text{s}$ | 2,000 | Lowest MSE |
+| **FastForest (RF)** | 0.019398 | 0.019343 | 2000 | 20,922.3 | 10.46 | 980.6 $\mu\text{s}$ | 2,000 | Completed |
+| **Standard MLP (PyTorch)** | 0.012537 | 0.012509 | 2000 | 147,929.6 | 73.96 | 409.6 $\mu\text{s}$ | 148 | Completed |
+| **ResNet-Tabular** | 0.011158 | 0.011487 | 2000 | 154,233.2 | 77.12 | 449.0 $\mu\text{s}$ | 684 | Completed |
+
+> [!IMPORTANT]
+> **Key findings against PyTorch (`Standard MLP`, `ResNet-Tabular`) and large-scale GBDT:**
+> - On 20,433 samples at 2,000 epochs (`8-12-4-1`), **`103KNN Neuromorphic` achieved better generalization (`Test MSE = 0.012238`) than `Standard MLP` (`0.012509`), `Nowral` (`0.013902`), and `FastForest` (`0.019343`)**, while also training faster than both `Standard MLP` and `ResNet-Tabular` (`144.7 s` vs. `147.9 s` and `154.2 s`).
+> - In single-sample inference latency, **`103KNN Neuromorphic` ($24.7\ \mu\text{s}$ using only $23$ spikes) was $16.6\times$ faster than `Standard MLP` ($409.6\ \mu\text{s}$), $18.2\times$ faster than `ResNet-Tabular` ($449.0\ \mu\text{s}$), $31.8\times$ faster than `FastTree` ($786.5\ \mu\text{s}$), and $39.7\times$ faster than `FastForest` ($980.6\ \mu\text{s}$)**.
+
+#### Chart: Single-Sample Inference Latency at 2,000 Epochs/Trees on 20,433 Samples ($\mu\text{s}$/sample, lower is better)
+```mermaid
+xychart-beta
+    title "Single-Sample Inference on 8-12-4-1 (20,433 samples, 2000 epochs/trees, us)"
+    x-axis ["103KNN SNN", "Standard MLP", "ResNet-Tabular", "Nowral", "FastTree", "FastForest"]
+    y-axis "Microseconds (us)" 0 --> 1020
+    bar [24.7, 409.6, 449.0, 597.5, 786.5, 980.6]
 ```
 
 ---

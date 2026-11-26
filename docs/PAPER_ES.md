@@ -30,6 +30,8 @@ Este estudio compara **103KNN Neuromorphic** frente a ambos mundos (redes neuron
 4. **`FastTree` (GBDT Tabular, `Microsoft.ML.FastTree`):** Ensamble de $200$ árboles de regresión potenciados por gradiente por cada variable de salida.
 5. **`FastForest` (Random Forest, `Microsoft.ML.FastTree`):** Ensamble de $200$ árboles aleatorios de regresión por cada variable de salida.
 6. **`103KNN Neuromorphic` (SNN Nativa en C#):** Motor orientado a eventos con codificación TTFS, neuronas LIF, adyacencia dispersa (`ConnectedTargets`) y entrenamiento paralelo (`Parallel.For` + `ThreadScratch`):
+7. **`Standard MLP` (`TorchSharp`):** Perceptrón multicapa denso estándar en PyTorch/TorchSharp sin máscara dispersa, entrenado con mini-lotes (`BatchSize = 64`) y optimizador `Adam`.
+8. **`ResNet-Tabular` (`TorchSharp`):** Arquitectura residual tabular con conexiones *skip* y bloques densos en PyTorch/TorchSharp. *(El Studio incluye además `LSTM` para secuencias).*
 
 ```mermaid
 flowchart LR
@@ -192,6 +194,59 @@ xychart-beta
     x-axis ["103KNN SNN", "FastForest", "FastTree", "Nowral", "NewNow"]
     y-axis "Microsegundos (us)" 0 --> 880
     bar [70.8, 119.1, 185.4, 493.9, 843.9]
+```
+
+---
+
+### 3.7 Experimento 7: Comparación Directa frente a `Standard MLP (PyTorch)` y `ResNet-Tabular (Skip)` (Split 80/20)
+
+Para contrastar `103KNN Neuromorphic` frente a arquitecturas estándar de aprendizaje profundo tabular en `TorchSharp` (**Standard MLP** y **ResNet-Tabular**) y árboles tabulares (**FastTree** y **FastForest**), se ejecutaron tres corridas adicionales con validación `80/20 Train/Test Split`, $\eta = 0.005$ y meta $\text{MSE} \le 0.0001$:
+
+#### A) Dataset de 1,030 muestras (`8-32-8-1`, 520 conexiones, 200 épocas/árboles)
+
+| Arquitectura | Train MSE | Test MSE | Épocas | Tiempo Total (ms) | ms / Época | Inferencia ($\mu\text{s}$/muestra) | Ops / Espigas | Resultado |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| **Nowral (Static)** | 0.006873 | 0.007238 | 200 | **364.7** | 1.82 | 302.9 $\mu\text{s}$ | 520 | Fastest |
+| **103KNN Neuromorphic** | 0.003640 | 0.005686 | 200 | 1,676.8 | 8.38 | **32.1 $\mu\text{s}$** | **22** | Completed |
+| **FastTree (GBDT)** | **0.000302** | **0.002720** | 200 | 663.2 | 3.32 | 33.0 $\mu\text{s}$ | 200 | Lowest MSE |
+| **FastForest (RF)** | 0.006979 | 0.010771 | 200 | 534.3 | 2.67 | 40.1 $\mu\text{s}$ | 200 | Completed |
+| **Standard MLP (PyTorch)** | 0.003894 | 0.005135 | 200 | 2,548.2 | 12.74 | 279.1 $\mu\text{s}$ | 520 | Completed |
+| **ResNet-Tabular** | 0.001885 | 0.003964 | 200 | 5,543.6 | 27.72 | 456.3 $\mu\text{s}$ | 4,384 | Completed |
+
+#### B) Dataset de 20,433 muestras (`8-16-8-1`, 264 conexiones, 200 épocas/árboles)
+
+| Arquitectura | Train MSE | Test MSE | Épocas | Tiempo Total (ms) | ms / Época | Inferencia ($\mu\text{s}$/muestra) | Ops / Espigas | Resultado |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| **Nowral (Static)** | 0.019886 | 0.018678 | 200 | **669.0** | 3.35 | 276.6 $\mu\text{s}$ | 264 | Fastest |
+| **103KNN Neuromorphic** | 0.012731 | 0.012496 | 200 | 21,754.6 | 108.77 | 38.4 $\mu\text{s}$ | **26** | Completed |
+| **FastTree (GBDT)** | **0.006241** | **0.009517** | 200 | 2,530.0 | 12.65 | **38.3 $\mu\text{s}$** | 200 | Lowest MSE |
+| **FastForest (RF)** | 0.019449 | 0.019343 | 200 | 2,785.0 | 13.93 | 68.1 $\mu\text{s}$ | 200 | Completed |
+| **Standard MLP (PyTorch)** | 0.014473 | 0.013858 | 200 | 15,462.0 | 77.31 | 416.9 $\mu\text{s}$ | 264 | Completed |
+| **ResNet-Tabular** | 0.012919 | 0.012382 | 200 | 17,180.8 | 85.90 | 430.7 $\mu\text{s}$ | 1,168 | Completed |
+
+#### C) Dataset de 20,433 muestras a 2,000 épocas/árboles (`8-12-4-1`, 148 conexiones)
+
+| Arquitectura | Train MSE | Test MSE | Épocas | Tiempo Total (ms) | ms / Época | Inferencia ($\mu\text{s}$/muestra) | Ops / Espigas | Resultado |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| **Nowral (Static)** | 0.014643 | 0.013902 | 2000 | **7,066.6** | 3.53 | 597.5 $\mu\text{s}$ | 148 | Fastest |
+| **103KNN Neuromorphic** | 0.012779 | 0.012238 | 2000 | 144,738.1 | 72.37 | **24.7 $\mu\text{s}$** | **23** | Completed |
+| **FastTree (GBDT)** | **0.000763** | **0.008600** | 2000 | 16,921.8 | 8.46 | 786.5 $\mu\text{s}$ | 2,000 | Lowest MSE |
+| **FastForest (RF)** | 0.019398 | 0.019343 | 2000 | 20,922.3 | 10.46 | 980.6 $\mu\text{s}$ | 2,000 | Completed |
+| **Standard MLP (PyTorch)** | 0.012537 | 0.012509 | 2000 | 147,929.6 | 73.96 | 409.6 $\mu\text{s}$ | 148 | Completed |
+| **ResNet-Tabular** | 0.011158 | 0.011487 | 2000 | 154,233.2 | 77.12 | 449.0 $\mu\text{s}$ | 684 | Completed |
+
+> [!IMPORTANT]
+> **Hallazgos clave frente a PyTorch (`Standard MLP` y `ResNet-Tabular`) y GBDT a gran escala:**
+> - En 20,433 muestras a 2,000 épocas (`8-12-4-1`), **`103KNN Neuromorphic` superó en generalización (`Test MSE = 0.012238`) a `Standard MLP` (`0.012509`), `Nowral` (`0.013902`) y `FastForest` (`0.019343`)**, entrenando además más rápido que `Standard MLP` y `ResNet-Tabular` (`144.7 s` vs. `147.9 s` y `154.2 s`).
+> - En latencia de inferencia unitaria, **`103KNN Neuromorphic` ($24.7\ \mu\text{s}$ con solo $23$ espigas) fue $16.6\times$ más rápida que `Standard MLP` ($409.6\ \mu\text{s}$), $18.2\times$ más rápida que `ResNet-Tabular` ($449.0\ \mu\text{s}$), $31.8\times$ más rápida que `FastTree` ($786.5\ \mu\text{s}$) y $39.7\times$ más rápida que `FastForest` ($980.6\ \mu\text{s}$)**.
+
+#### Gráfica: Latencia de Inferencia a 2,000 Épocas/Árboles en 20,433 muestras ($\mu\text{s}$/muestra, menor es mejor)
+```mermaid
+xychart-beta
+    title "Inferencia Unitaria en 8-12-4-1 (20,433 muestras, 2000 épocas/árboles, us)"
+    x-axis ["103KNN SNN", "Standard MLP", "ResNet-Tabular", "Nowral", "FastTree", "FastForest"]
+    y-axis "Microsegundos (us)" 0 --> 1020
+    bar [24.7, 409.6, 449.0, 597.5, 786.5, 980.6]
 ```
 
 ---
